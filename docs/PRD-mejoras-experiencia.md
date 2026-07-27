@@ -43,6 +43,7 @@ Métricas de apoyo:
 4. **Menos es más al inicio.** Mostrar lo esencial; lo avanzado, a un clic.
 5. **Respetar al usuario.** Movimiento y sonido opcionales; nada intrusivo; accesible.
 6. **Gratis generosa, Pro insinuada.** La versión gratis se siente completa; lo premium se sugiere sin molestar.
+7. **Hablar como un compañero de foco.** Cada palabra en pantalla suma calidez y confianza, o sobra. La voz es parte del producto, no decoración (ver §9).
 
 ---
 
@@ -81,6 +82,12 @@ Cada ítem: **qué**, **por qué** (lente UX/CS), **impacto/esfuerzo** y **nota 
 - **Por qué:** Amplía el público (accesibilidad + móvil = más alcance y menos rebote), y evita mareos/molestias que hacen cerrar la pestaña.
 - **Impacto:** Medio-alto · **Esfuerzo:** Bajo-medio
 - **Gratis:** Sí.
+
+#### P0.6 · Voz y tono para retener
+- **Qué:** Reescribir todos los microtextos de la app (hero, leyenda, mensajes de estado/`aria-live`, hints del panel, mensajes de fin de cuenta y pausa) con una voz consistente y cálida, según la **Guía de voz y tono (§9)**. Incluye una decisión pendiente y bloqueante: **unificar el registro** (hoy conviven "Gira/Usa" en tú con "Girá/soltá" en voseo — es una inconsistencia que se lee como descuido).
+- **Por qué:** El texto es el 80 % de la conversación con el usuario y hoy suena a manual técnico neutro. Un tono de "compañero de foco" —cercano, sereno, alentador— genera vínculo, baja la sensación de fricción y convierte cada pausa/fin de sesión en un refuerzo positivo que invita a volver. Es la palanca de retención más barata que existe: cambia percepción sin tocar una sola funcionalidad.
+- **Impacto:** Alto (retención + percepción de marca) · **Esfuerzo:** Muy bajo
+- **Gratis:** Sí. Es solo copy.
 
 ### P1 — Alta prioridad (deleite, alcance, hábito)
 
@@ -159,7 +166,7 @@ Cada ítem: **qué**, **por qué** (lente UX/CS), **impacto/esfuerzo** y **nota 
 
 | Fase | Contenido | Objetivo |
 |---|---|---|
-| **Sprint 1 (base sólida)** | P0.1, P0.2, P0.3 | Activar mejor y no perder al que vuelve |
+| **Sprint 1 (base sólida)** | P0.1, P0.2, P0.3, P0.6 | Activar mejor, no perder al que vuelve y fijar la voz de marca desde el día 1 |
 | **Sprint 2 (deleite)** | P0.4, P0.5, P1.1 | Momentos memorables + accesible + descubrir el sonido |
 | **Sprint 3 (alcance)** | P1.2, P1.3, P1.4 | Compartir, notificar, instalar |
 | **Sprint 4 (pulido)** | P1.5, P2.1–P2.4 | Menos fricción, hábito ligero, señal de producto |
@@ -173,6 +180,7 @@ Cada ítem: **qué**, **por qué** (lente UX/CS), **impacto/esfuerzo** y **nota 
 - **Retorno D7** mejora tras P0.1 + P1.4 (persistencia + PWA).
 - Al menos **un momento de deleite** verificado por sesión (fin de cuenta) sin quejas de accesibilidad.
 - Aparecen **compartidos/instalaciones** orgánicos como señal de atractivo.
+- **Voz consistente**: un registro único en el 100 % de los textos y percepción cálida validada con 5–8 usuarios ("¿cómo describirías el tono?" → esperado: cercano, tranquilo, motivador; no frío ni técnico).
 
 ---
 
@@ -185,3 +193,90 @@ Cada ítem: **qué**, **por qué** (lente UX/CS), **impacto/esfuerzo** y **nota 
 | PWA/offline agrega complejidad de mantenimiento | Service worker mínimo (solo shell), sin caché agresiva de estado |
 | Gamificación que presione en vez de motivar | Mantenerla opcional, positiva y descartable; nada de rachas "castigadoras" |
 | Sobrecargar la versión gratis | Respetar la sección "Fuera de alcance"; toda feature nueva pasa por "¿mejora la experiencia base o agrega complejidad?" |
+| Tono que cansa o distrae del foco | Chispa con moderación; en sesión, casi sin palabras; celebrar breve, nunca en cadena de signos; registro único y revisado (§9) |
+
+---
+
+## 9. Guía de voz y tono
+
+> Objetivo: que la app **suene** como un buen compañero de foco. La voz genera confianza y calidez; la calidez retiene. Esta guía es la base de la tarea **P0.6**.
+
+### 9.1 Personalidad (la voz — constante)
+
+Focube es **un compañero de foco sereno y alentador**. No es un coach que grita ni un manual de instrucciones. Piensa en un amigo tranquilo que te ayuda a concentrarte: te da lo justo, en el momento justo, y se calla cuando tenés que trabajar.
+
+Cuatro atributos de voz:
+
+1. **Cercano** — te habla a vos, como una persona, no como un sistema.
+2. **Sereno** — es una herramienta de foco: frases cortas, sin apuro, sin ruido.
+3. **Alentador** — refuerza lo logrado; nunca reta ni culpa.
+4. **Con chispa (sutil)** — un guiño de juego (el tomate 🍅), usado con cuentagotas y jamás a costa de la claridad.
+
+### 9.2 Decisión de registro (bloqueante)
+
+Hoy el copy mezcla **tú** ("Gira", "Usa", "arrastra") con **voseo** ("Girá", "soltá"). Eso se lee como descuido y hay que unificarlo.
+
+- **Recomendación:** **voseo** en toda la app. Es más cálido y cercano para el público principal, y coincide con la voz de la marca.
+- **Alternativa:** si el mercado objetivo es pan-hispano/España, usar imperativo neutro impersonal ("Girá" → "Girar" / "Soltá para arrancar" → "Soltar para arrancar") o "tú".
+- **Innegociable:** un solo registro, en el 100 % de los textos (UI, `aria-live`, hints, mensajes de fin).
+
+*Los ejemplos de abajo usan la recomendación (voseo).*
+
+### 9.3 El tono se adapta al momento
+
+La voz es constante; el **tono** cambia según dónde está el usuario:
+
+| Momento | Tono | Ejemplo |
+|---|---|---|
+| Primer uso / onboarding | Invitador, simple | "Girá el cubo y soltá. Arranca solo." |
+| En sesión (foco activo) | Casi mudo, no distraer | Deja hablar al LED; nada de mensajes |
+| Pausa | Tranquilizador, sin culpa | "En pausa. Seguís cuando quieras." |
+| Fin de cuenta / logro | Cálido y breve | "¡Listo! Un bloque menos. 🍅" |
+| Descanso (Pomodoro) | Permisivo, amable | "Respirá. Descanso 2 de 4." |
+| Vacío / en reposo | Orientador suave | "Listo cuando vos quieras. Girá una cara para arrancar." |
+| Error / permiso denegado | Humano, con salida | "No pudimos activar el sonido. Tocá una vez y listo." |
+
+### 9.4 Reglas rápidas
+
+**Hacer**
+- Verbo de acción primero, frases cortas.
+- Hablar de "vos", en singular y humano.
+- Celebrar el progreso, corto y genuino.
+- Nombrar el beneficio, no el mecanismo ("a concentrarse", no "iniciando countdown").
+
+**Evitar**
+- Jerga técnica en pantalla: *countdown, toggle, display, LED* como etiquetas para el usuario.
+- Signos de admiración en cadena o mayúsculas gritadas.
+- Culpar o presionar: "perdiste tu racha", "no completaste".
+- Textos largos durante el foco.
+- Mezclar registros (vos/tú).
+
+### 9.5 Reescrituras concretas (antes → después)
+
+Sobre los textos reales de la app:
+
+| Lugar | Antes | Después (voseo) |
+|---|---|---|
+| Título (H1) | El cubo Pomodoro que se controla volteándolo. | Girá el cubo. El tiempo arranca solo. |
+| Intro (hero) | Gira el dial y suelta: la cara que queda arriba define el modo y arranca sola. La cara del reloj pausa la cuenta y volver a la misma cara la reanuda. | Girá y soltá: la cara de arriba elige el tiempo y arranca sola. ¿Necesitás una pausa? Poné el reloj arriba. |
+| Reposo (`aria-live`) | Cubo en modo reloj. Gira una cara hacia arriba. | Listo cuando vos quieras. Girá una cara para arrancar. |
+| Pausa | Reloj arriba. Cuenta en pausa. | En pausa. Seguís cuando quieras. |
+| Reanudar | Cuenta reanudada en 10. | Seguimos con los 10. |
+| Inicio Pomodoro | Pomodoro iniciado. Bloque de trabajo 1 de 4. | A concentrarse. Bloque 1 de 4. |
+| Fin de cuenta | Tiempo cumplido. Volviendo a modo reloj. | ¡Listo! Bloque completo. 🍅 |
+| Fin de Pomodoro | Pomodoro completo. Volviendo a modo reloj. | ¡Cuatro bloques! Gran sesión, te la ganaste. |
+| Personalizado | Cuenta regresiva personalizada de 25 minutos. | Listo: 25 minutos. A darle. |
+| Hint Focus | Pantalla completa sólo con el cubo. El ambiente suena mientras Focus está activo. | Solo vos y el cubo, a pantalla completa. El ambiente te acompaña. |
+| Botón Reloj (panel) | Reloj · Pausa la cuenta | Reloj · Pausá cuando quieras |
+
+### 9.6 Alcance y aplicación
+
+- Los textos viven en `src/pages/Home.tsx` (hero, leyenda, chips, hints, mensajes `setLiveMessage`) y en las etiquetas de los controles.
+- Los mensajes `aria-live` también los leen lectores de pantalla: mantener claros y con la misma voz.
+- Idealmente, centralizar los strings en un solo módulo (p. ej. `src/copy.ts`) para mantener consistencia y facilitar futuras traducciones.
+
+### 9.7 Cómo lo medimos
+
+- Cualitativo (5–8 usuarios): "¿cómo describirías el tono de la app?" → esperado: *cercano, tranquilo, motivador*.
+- Proxy cuantitativo: mejora en retorno D7 y en sesiones completadas tras el rediseño de copy (junto a P0.1/P0.4).
+- Checklist de consistencia: 0 textos con registro mezclado; 0 tecnicismos en pantalla de cara al usuario.
