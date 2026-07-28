@@ -1,0 +1,111 @@
+<!doctype html>
+<!--
+  Source for `public/og-cover.png` (1200x630 Open Graph / Twitter card).
+
+  Generation (build-time only, no user input, fixed local path):
+    Render this file with headless Chrome at an exact 1200x630 viewport and
+    screenshot the `.card` element (or the full viewport, since it already
+    fills 1200x630) to `public/og-cover.png`.
+
+  Kept self-contained: the Focube glyph is inlined as raw SVG (copied from
+  `public/favicon.svg`, scaled via width/height) instead of referenced by
+  path, so the render never depends on relative file resolution. No webfont
+  is loaded — headless Chrome renders this offline, so only the system font
+  stack from `src/index.css`'s `:root` rule is used.
+
+  Baselines below are approximate (see design D-asset spec, baselines are
+  themselves noted as "~"): the wordmark and tagline are positioned with a
+  `top` offset chosen so their rendered baseline lands close to y=430 and
+  y=500 respectively, accounting for typical sans-serif ascent (~0.8em).
+-->
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Focube — OG cover source</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #0a0b0d;
+      }
+
+      .card {
+        position: relative;
+        width: 1200px;
+        height: 630px;
+        background:
+          radial-gradient(
+            circle at 50% 32%,
+            rgba(50, 240, 140, 0.14),
+            transparent 60%
+          ),
+          #0a0b0d;
+        /* Copied verbatim from the `:root` rule in src/index.css. */
+        font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+      }
+
+      .glyph {
+        position: absolute;
+        top: 120px;
+        left: 50%;
+        width: 220px;
+        height: 220px;
+        transform: translateX(-50%);
+      }
+
+      .wordmark {
+        position: absolute;
+        top: 342px; /* baseline ~430 at 110px font-size */
+        left: 0;
+        width: 1200px;
+        text-align: center;
+        font-size: 110px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1;
+        color: #f2f3f5;
+      }
+
+      .tagline {
+        position: absolute;
+        top: 465px; /* baseline ~500 at 44px font-size */
+        left: 0;
+        width: 1200px;
+        text-align: center;
+        font-size: 44px;
+        font-weight: 400;
+        color: #9ba1a8;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <svg
+        class="glyph"
+        width="220"
+        height="220"
+        viewBox="0 0 32 32"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <!-- The favicon's opaque background rect is intentionally NOT copied:
+             on the card it renders as a visible dark square cutting a hole in
+             the gradient. The card's own background stands in for it. -->
+        <path
+          d="M26.6677 23.7149H8.38057V20.6496H5.33301V8.38159H26.6677V23.7149ZM8.38057 20.6496H23.6201V11.4482H8.38057V20.6496ZM16.0011 16.0021L13.8461 18.1705L11.6913 16.0021L13.8461 13.8337L16.0011 16.0021ZM22.0963 16.0008L19.9414 18.1691L17.7865 16.0008L19.9414 13.8324L22.0963 16.0008Z"
+          fill="#32F08C"
+        />
+      </svg>
+      <div class="wordmark">Focube</div>
+      <div class="tagline">Gira el cubo. El tiempo arranca solo.</div>
+    </div>
+  </body>
+</html>
