@@ -14,7 +14,7 @@ Set them in `.env.local` at the repo root (git-ignored).
 |---|---|---|
 | `VITE_POSTHOG_KEY` | — | No analytics code runs at all |
 | `VITE_POSTHOG_HOST` | `https://us.i.posthog.com` | Uses the default host |
-| `VITE_SITE_URL` | — | Relative OG image, `og:url` omitted |
+| `VITE_SITE_URL` | `VERCEL_PROJECT_PRODUCTION_URL` | Relative OG image, `og:url` omitted |
 
 ## `VITE_POSTHOG_KEY`
 
@@ -40,14 +40,24 @@ Use `https://eu.i.posthog.com` for an EU-hosted project.
 The canonical origin used to build absolute Open Graph and Twitter card URLs,
 e.g. `https://focube.app`. Crawlers require absolute image URLs.
 
-Unset, empty, unparseable or non-https means the page emits a relative
-`/og-cover.png` and omits `og:url` entirely — crawlers then fall back to the
-URL they fetched as canonical, which is better than shipping a broken absolute
-URL or `og:url="/"`.
+**On Vercel you do not need to set this.** The build falls back to
+`VERCEL_PROJECT_PRODUCTION_URL`, a system variable Vercel populates with the
+shortest production custom domain (or the `.vercel.app` one when there is no
+custom domain). It is available at build time and is set even on preview
+deployments — which is what an OG image wants: a preview should advertise the
+stable production image, not a per-deployment URL that dies with the branch.
 
-`sst.config.ts` declares no custom domain, so there is no verified value for
-this yet. Set it once the site has a real one, then re-check the card with the
-crawler validators.
+It requires **Settings → Environment Variables → "Enable access to System
+Environment Variables"** to be checked, which is Vercel's default.
+
+Set `VITE_SITE_URL` explicitly only to override that — a different canonical
+domain, or a host other than Vercel. An explicit value wins; an explicit value
+that fails validation falls back to the platform host rather than leaving the
+page with no origin at all.
+
+With neither available, the page emits a relative `/og-cover.png` and omits
+`og:url` entirely. Crawlers then fall back to the URL they fetched as
+canonical, which is better than shipping a broken absolute URL or `og:url="/"`.
 
 ## After setting the analytics keys
 

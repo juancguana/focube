@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from "vite-tsconfig-paths";
-import { buildSocialTags, resolveSiteUrl } from "./src/config/socialTags";
+import { buildSocialTags, resolveDeployOrigin } from "./src/config/socialTags";
 
 /**
  * Injects the Open Graph / Twitter card meta tags into the
@@ -16,7 +16,12 @@ function socialTagsPlugin(): Plugin {
   return {
     name: "focube-social-tags",
     transformIndexHtml(html) {
-      const siteUrl = resolveSiteUrl(process.env.VITE_SITE_URL);
+      // VERCEL_PROJECT_PRODUCTION_URL is a build-time system variable, so it
+      // needs no VITE_ prefix: this hook runs in Node, not in the browser.
+      const siteUrl = resolveDeployOrigin(
+        process.env.VITE_SITE_URL,
+        process.env.VERCEL_PROJECT_PRODUCTION_URL,
+      );
       return html.replace("<!--social-tags-->", buildSocialTags(siteUrl));
     },
   };

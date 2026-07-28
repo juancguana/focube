@@ -6,13 +6,16 @@ import { copy } from "../copy";
 /**
  * Open Graph / Twitter card generation.
  *
- * `VITE_SITE_URL` has no verified value today — `sst.config.ts` declares no
- * custom domain. The real failure mode is not "wrong domain", it is Vite
+ * The failure mode worth designing against is not "wrong domain", it is Vite
  * leaving a literal `%VITE_SITE_URL%` placeholder in the built HTML when the
  * var is undefined. This module never touches that placeholder syntax: it
  * resolves the value in plain TypeScript and injects a fully-built tag block
  * via a `transformIndexHtml` hook (see `vite.config.ts`), so an unresolved
  * placeholder cannot leak into shipped HTML.
+ *
+ * The origin is resolved from two sources, in order — see
+ * {@link resolveDeployOrigin}. Setting nothing at all still produces valid
+ * (if relative) tags.
  */
 
 const OG_IMAGE_PATH = "/og-cover.png";
@@ -40,6 +43,35 @@ export function resolveSiteUrl(raw: string | undefined): string {
   if (parsed.protocol !== "https:") return "";
 
   return parsed.origin;
+}
+
+/**
+ * Resolves the canonical origin for social tags, preferring an explicit
+ * setting and falling back to the host the platform already knows.
+ *
+ * On Vercel, `VERCEL_PROJECT_PRODUCTION_URL` is the shortest production
+ * custom domain (or the `.vercel.app` one when no custom domain exists). It
+ * is available at build time and is set even on preview deployments, which
+ * is exactly what an OG image URL wants: previews should advertise the
+ * stable production image, not a per-deployment URL that dies with the
+ * branch. Using it means the domain never has to be typed into a second
+ * place where it can silently drift.
+ *
+ * It arrives as a bare host with no scheme, so https is added before the
+ * value goes through the same validation as an explicit setting.
+ */
+export function resolveDeployOrigin(
+  explicitUrl: string | undefined,
+  platformHost: string | undefined,
+): string {
+  const explicit = resolveSiteUrl(explicitUrl);
+  if (explicit) return explicit;
+
+  if (!platformHost) return "";
+
+  return resolveSiteUrl(
+    platformHost.includes("://") ? platformHost : `https://${platformHost}`,
+  );
 }
 
 function escapeAttr(value: string): string {

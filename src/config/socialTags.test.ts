@@ -1,5 +1,51 @@
 import { describe, expect, it } from "vitest";
-import { buildSocialTags, resolveSiteUrl } from "./socialTags";
+import {
+  buildSocialTags,
+  resolveDeployOrigin,
+  resolveSiteUrl,
+} from "./socialTags";
+
+describe("resolveDeployOrigin — origen desde la plataforma", () => {
+  it("prefiere el valor explícito sobre el de la plataforma", () => {
+    expect(
+      resolveDeployOrigin("https://focube.app", "focube.vercel.app"),
+    ).toBe("https://focube.app");
+  });
+
+  it("cae al host de la plataforma agregándole el esquema", () => {
+    // Vercel entrega el host pelado, sin protocolo.
+    expect(resolveDeployOrigin(undefined, "focube.vercel.app")).toBe(
+      "https://focube.vercel.app",
+    );
+  });
+
+  it("acepta un host de plataforma que ya trae esquema", () => {
+    expect(resolveDeployOrigin(undefined, "https://focube.app")).toBe(
+      "https://focube.app",
+    );
+  });
+
+  it("sin ninguna de las dos, degrada a vacío", () => {
+    expect(resolveDeployOrigin(undefined, undefined)).toBe("");
+    expect(resolveDeployOrigin("", "")).toBe("");
+  });
+
+  it("un valor explícito inválido no anula el de la plataforma", () => {
+    // Un typo en la variable manual no debe dejar la app sin origen si la
+    // plataforma ya sabe cuál es el dominio bueno.
+    expect(resolveDeployOrigin("no-es-una-url", "focube.vercel.app")).toBe(
+      "https://focube.vercel.app",
+    );
+  });
+
+  it("descarta un host de plataforma que no sea https", () => {
+    expect(resolveDeployOrigin(undefined, "http://focube.app")).toBe("");
+  });
+
+  it("descarta basura en el host de plataforma", () => {
+    expect(resolveDeployOrigin(undefined, "://")).toBe("");
+  });
+});
 
 describe("resolveSiteUrl — origen del sitio (Slice B)", () => {
   it("devuelve vacío cuando falta la variable", () => {
