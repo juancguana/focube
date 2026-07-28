@@ -4,12 +4,17 @@ import {
   type CubeFinish,
   type SoundscapeId,
 } from "@/stores/preferencesStore";
-import type { ModeFaceId } from "@/utils/cube";
+import {
+  POMODORO_MULTIPLIERS,
+  clampPomodoroMultiplier,
+  type ModeFaceId,
+} from "@/utils/cube";
 
 const PARAM_FINISH = "finish";
 const PARAM_SOUNDSCAPE = "sound";
 const PARAM_MINUTES = "min";
 const PARAM_MODE = "mode";
+const PARAM_MULTIPLIER = "block";
 
 const VALID_FINISHES: ReadonlySet<string> = new Set([
   "black",
@@ -41,6 +46,7 @@ export interface SharedSetup {
   soundscape: SoundscapeId | null;
   customMinutes: number | null;
   mode: ModeFaceId | null;
+  pomodoroMultiplier: number | null;
 }
 
 /**
@@ -57,6 +63,8 @@ export function parseSetupParams(search: string): SharedSetup {
   const rawMinutes = params.get(PARAM_MINUTES);
   const minutes = rawMinutes === null ? NaN : Number(rawMinutes);
   const mode = params.get(PARAM_MODE);
+  const rawMultiplier = params.get(PARAM_MULTIPLIER);
+  const multiplier = rawMultiplier === null ? NaN : Number(rawMultiplier);
 
   return {
     finish:
@@ -72,6 +80,14 @@ export function parseSetupParams(search: string): SharedSetup {
         ? minutes
         : null,
     mode: mode && VALID_MODES.has(mode) ? (mode as ModeFaceId) : null,
+    // Rejected rather than clamped: an out-of-range block means the link was
+    // hand-edited or written by a different build, and dropping it leaves the
+    // visitor on their own saved preference instead of a value we invented.
+    pomodoroMultiplier: (POMODORO_MULTIPLIERS as readonly number[]).includes(
+      multiplier,
+    )
+      ? multiplier
+      : null,
   };
 }
 
@@ -80,6 +96,7 @@ export function buildSetupParams(
   soundscape: SoundscapeId,
   customMinutes: number,
   mode?: ModeFaceId | null,
+  pomodoroMultiplier: number = 1,
 ): URLSearchParams {
   const params = new URLSearchParams();
   params.set(PARAM_FINISH, finish);
@@ -88,6 +105,10 @@ export function buildSetupParams(
   if (mode) {
     params.set(PARAM_MODE, mode);
   }
+  params.set(
+    PARAM_MULTIPLIER,
+    String(clampPomodoroMultiplier(pomodoroMultiplier)),
+  );
   return params;
 }
 
@@ -114,6 +135,10 @@ export function useUrlState(currentMode: ModeFaceId | null) {
   const setSoundscape = usePreferencesStore((s) => s.setSoundscape);
   const customMinutesStore = usePreferencesStore((s) => s.customMinutes);
   const setCustomMinutesStore = usePreferencesStore((s) => s.setCustomMinutes);
+  const pomodoroMultiplier = usePreferencesStore((s) => s.pomodoroMultiplier);
+  const setPomodoroMultiplier = usePreferencesStore(
+    (s) => s.setPomodoroMultiplier,
+  );
 
   // Computed during the render phase (not an effect) so the value is already
   // correct by the time ANY mount effect runs — including this hook's own
@@ -148,6 +173,13 @@ export function useUrlState(currentMode: ModeFaceId | null) {
     ) {
       setCustomMinutesStore(shared.customMinutes);
     }
+
+    if (
+      shared.pomodoroMultiplier !== null &&
+      shared.pomodoroMultiplier !== pomodoroMultiplier
+    ) {
+      setPomodoroMultiplier(shared.pomodoroMultiplier);
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep URL in sync with the store (only when the URL already has params or
@@ -163,11 +195,18 @@ export function useUrlState(currentMode: ModeFaceId | null) {
       soundscape,
       customMinutesStore,
       currentMode,
+      pomodoroMultiplier,
     );
     const newUrl =
       window.location.pathname + "?" + params.toString() + window.location.hash;
     window.history.replaceState(null, "", newUrl);
-  }, [cubeFinish, soundscape, customMinutesStore, currentMode]);
+  }, [
+    cubeFinish,
+    soundscape,
+    customMinutesStore,
+    currentMode,
+    pomodoroMultiplier,
+  ]);
 
   const getShareableUrl = useCallback(() => {
     const params = buildSetupParams(
@@ -175,9 +214,16 @@ export function useUrlState(currentMode: ModeFaceId | null) {
       soundscape,
       customMinutesStore,
       currentMode,
+      pomodoroMultiplier,
     );
     return window.location.origin + window.location.pathname + "?" + params.toString();
-  }, [cubeFinish, soundscape, customMinutesStore, currentMode]);
+  }, [
+    cubeFinish,
+    soundscape,
+    customMinutesStore,
+    currentMode,
+    pomodoroMultiplier,
+  ]);
 
   const hasUrlParams = window.location.search.length > 1;
 

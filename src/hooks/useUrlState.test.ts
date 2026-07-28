@@ -9,6 +9,7 @@ describe("parseSetupParams — links compartidos (P1.2)", () => {
       soundscape: "ticks",
       customMinutes: 45,
       mode: null,
+      pomodoroMultiplier: null,
     });
   });
 
@@ -43,6 +44,7 @@ describe("parseSetupParams — links compartidos (P1.2)", () => {
       soundscape: null,
       customMinutes: null,
       mode: null,
+      pomodoroMultiplier: null,
     });
   });
 });
@@ -55,6 +57,36 @@ describe("buildSetupParams", () => {
       soundscape: "both",
       customMinutes: 15,
       mode: null,
+      pomodoroMultiplier: 1,
+    });
+  });
+});
+
+describe("multiplicador del bloque compartido", () => {
+  it("acepta cada multiplicador que ofrece la UI", () => {
+    for (const multiplier of [1, 2, 3, 4]) {
+      expect(parseSetupParams(`?block=${multiplier}`).pomodoroMultiplier).toBe(
+        multiplier,
+      );
+    }
+  });
+
+  // Untrusted input: a link must never produce a block the UI cannot offer.
+  it.each(["0", "5", "-2", "2.5", "abc", "", "%3Cscript%3E"])(
+    "descarta el valor inválido %j",
+    (raw) => {
+      expect(parseSetupParams(`?block=${raw}`).pomodoroMultiplier).toBeNull();
+    },
+  );
+
+  it("viaja de ida y vuelta en el link", () => {
+    const params = buildSetupParams("black", "focus", 25, "pomodoro", 3);
+    expect(parseSetupParams(`?${params.toString()}`)).toEqual({
+      finish: "black",
+      soundscape: "focus",
+      customMinutes: 25,
+      mode: "pomodoro",
+      pomodoroMultiplier: 3,
     });
   });
 });
