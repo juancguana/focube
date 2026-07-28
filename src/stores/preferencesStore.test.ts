@@ -1,21 +1,13 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { usePreferencesStore } from "./preferencesStore";
+import { initialPreferences, usePreferencesStore } from "./preferencesStore";
 
 describe("preferencesStore", () => {
   beforeEach(() => {
     // Reset store between tests
     usePreferencesStore.setState({
-      cubeFinish: "black",
-      alertType: "sound",
-      soundscape: "focus",
-      customMinutes: 25,
+      ...initialPreferences,
       alarms: [{ id: "alarm-1", hour: 8, minute: 0, enabled: false }],
-      hasSeenOnboarding: false,
-      panelSectionsCollapsed: { alertType: false, finish: false },
-      dailySessions: 0,
       dailySessionsDate: "2000-01-01",
-      streakDays: 0,
-      lastStreakDate: "",
     });
   });
 
@@ -68,15 +60,41 @@ describe("preferencesStore", () => {
     expect(usePreferencesStore.getState().alarms[0].hour).toBe(10);
   });
 
+  it("las secciones secundarias arrancan colapsadas", () => {
+    const { panelSectionsCollapsed } = usePreferencesStore.getState();
+    expect(panelSectionsCollapsed).toEqual({
+      screenTools: true,
+      focusMode: true,
+      alertType: true,
+      finish: true,
+    });
+  });
+
   it("togglePanelSectionCollapsed cambia estado de sección", () => {
     expect(
       usePreferencesStore.getState().panelSectionsCollapsed.alertType,
-    ).toBe(false);
-    usePreferencesStore
-      .getState()
-      .togglePanelSectionCollapsed("alertType");
+    ).toBe(true);
+    usePreferencesStore.getState().togglePanelSectionCollapsed("alertType");
     expect(
       usePreferencesStore.getState().panelSectionsCollapsed.alertType,
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it("setNotificationsEnabled guarda el opt-in", () => {
+    expect(usePreferencesStore.getState().notificationsEnabled).toBe(false);
+    usePreferencesStore.getState().setNotificationsEnabled(true);
+    expect(usePreferencesStore.getState().notificationsEnabled).toBe(true);
+  });
+
+  it("incrementDailySession suma sesiones del día y abre racha", () => {
+    usePreferencesStore.getState().incrementDailySession();
+    const first = usePreferencesStore.getState();
+    expect(first.dailySessions).toBe(1);
+    expect(first.streakDays).toBe(1);
+
+    usePreferencesStore.getState().incrementDailySession();
+    expect(usePreferencesStore.getState().dailySessions).toBe(2);
+    // Same day must not inflate the streak.
+    expect(usePreferencesStore.getState().streakDays).toBe(1);
   });
 });

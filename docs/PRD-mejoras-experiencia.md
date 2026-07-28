@@ -66,7 +66,7 @@ Cada ítem: **qué**, **por qué** (lente UX/CS), **impacto/esfuerzo** y **nota 
 - **Gratis:** Sí.
 
 #### P0.3 · Primer uso guiado en 1 gesto + CTA de arranque
-- **Qué:** En la primera visita (detectada por `localStorage`), resaltar/pulsar las flechas del dial y mostrar un microcopy de un renglón: "Girá y soltá — arranca solo". Sumar un CTA primario visible: **"Probá 25 min"** que inicie un Pomodoro al instante.
+- **Qué:** En la primera visita (detectada por `localStorage`), resaltar/pulsar las flechas del dial y mostrar un microcopy de un renglón: "Gira y suelta — arranca solo". Sumar un CTA primario visible: **"Prueba 25 min"** que inicie un Pomodoro al instante.
 - **Por qué:** El valor del producto es "flip to start", pero un primer visitante no lo sabe. Un empujón de un gesto baja el time-to-first-timer. El CTA da un camino de un clic para quien no quiere explorar.
 - **Impacto:** Alto · **Esfuerzo:** Bajo
 - **Gratis:** Sí. Se descarta tras el primer uso.
@@ -84,7 +84,7 @@ Cada ítem: **qué**, **por qué** (lente UX/CS), **impacto/esfuerzo** y **nota 
 - **Gratis:** Sí.
 
 #### P0.6 · Voz y tono para retener
-- **Qué:** Reescribir todos los microtextos de la app (hero, leyenda, mensajes de estado/`aria-live`, hints del panel, mensajes de fin de cuenta y pausa) con una voz consistente y cálida, según la **Guía de voz y tono (§9)**. Incluye una decisión pendiente y bloqueante: **unificar el registro** (hoy conviven "Gira/Usa" en tú con "Girá/soltá" en voseo — es una inconsistencia que se lee como descuido).
+- **Qué:** Reescribir todos los microtextos de la app (hero, leyenda, mensajes de estado/`aria-live`, hints del panel, mensajes de fin de cuenta y pausa) con una voz consistente y cálida, según la **Guía de voz y tono (§9)**. Incluye **unificar el registro** en un solo español latino neutro ("tú"), decidido en §9.2.
 - **Por qué:** El texto es el 80 % de la conversación con el usuario y hoy suena a manual técnico neutro. Un tono de "compañero de foco" —cercano, sereno, alentador— genera vínculo, baja la sensación de fricción y convierte cada pausa/fin de sesión en un refuerzo positivo que invita a volver. Es la palanca de retención más barata que existe: cambia percepción sin tocar una sola funcionalidad.
 - **Impacto:** Alto (retención + percepción de marca) · **Esfuerzo:** Muy bajo
 - **Gratis:** Sí. Es solo copy.
@@ -136,7 +136,7 @@ Cada ítem: **qué**, **por qué** (lente UX/CS), **impacto/esfuerzo** y **nota 
 - **Gratis:** Sí.
 
 #### P2.3 · Canal de feedback liviano
-- **Qué:** Un enlace discreto "¿Ideas? Contanos" (mailto o formulario externo).
+- **Qué:** Un enlace discreto "¿Ideas? Cuéntanos" (mailto o formulario externo).
 - **Por qué:** Customer success: escuchar temprano y barato guía el roadmap y crea vínculo con los primeros usuarios.
 - **Impacto:** Bajo-medio (aprendizaje) · **Esfuerzo:** Muy bajo
 - **Gratis:** Sí.
@@ -207,20 +207,20 @@ Focube es **un compañero de foco sereno y alentador**. No es un coach que grita
 
 Cuatro atributos de voz:
 
-1. **Cercano** — te habla a vos, como una persona, no como un sistema.
+1. **Cercano** — te habla a ti, como una persona, no como un sistema.
 2. **Sereno** — es una herramienta de foco: frases cortas, sin apuro, sin ruido.
 3. **Alentador** — refuerza lo logrado; nunca reta ni culpa.
 4. **Con chispa (sutil)** — un guiño de juego (el tomate 🍅), usado con cuentagotas y jamás a costa de la claridad.
 
-### 9.2 Decisión de registro (bloqueante)
+### 9.2 Decisión de registro (resuelta)
 
-Hoy el copy mezcla **tú** ("Gira", "Usa", "arrastra") con **voseo** ("Girá", "soltá"). Eso se lee como descuido y hay que unificarlo.
+**Decisión (2026-07-27): español latino neutro, registro "tú".** El público objetivo es toda Latinoamérica, y el voseo marca demasiado una región. El neutro se entiende igual de cerca en México, Colombia, Perú, Chile o Argentina, y no suena a localismo prestado.
 
-- **Recomendación:** **voseo** en toda la app. Es más cálido y cercano para el público principal, y coincide con la voz de la marca.
-- **Alternativa:** si el mercado objetivo es pan-hispano/España, usar imperativo neutro impersonal ("Girá" → "Girar" / "Soltá para arrancar" → "Soltar para arrancar") o "tú".
-- **Innegociable:** un solo registro, en el 100 % de los textos (UI, `aria-live`, hints, mensajes de fin).
+- **Registro:** "tú" en imperativo — "Gira", "Suelta", "Pon el reloj arriba".
+- **Innegociable:** un solo registro, en el 100 % de los textos (UI, `aria-live`, hints, mensajes de fin, manifiesto PWA y título de la pestaña).
+- **Prohibido:** formas voseantes ("Girá", "soltá", "contanos", "seguís") y localismos de una sola región. Hay una prueba automatizada que falla si alguna se cuela (`src/copy.test.ts`).
 
-*Los ejemplos de abajo usan la recomendación (voseo).*
+*Los ejemplos de abajo usan la decisión vigente.*
 
 ### 9.3 El tono se adapta al momento
 
@@ -228,19 +228,19 @@ La voz es constante; el **tono** cambia según dónde está el usuario:
 
 | Momento | Tono | Ejemplo |
 |---|---|---|
-| Primer uso / onboarding | Invitador, simple | "Girá el cubo y soltá. Arranca solo." |
-| En sesión (foco activo) | Casi mudo, no distraer | Deja hablar al LED; nada de mensajes |
-| Pausa | Tranquilizador, sin culpa | "En pausa. Seguís cuando quieras." |
-| Fin de cuenta / logro | Cálido y breve | "¡Listo! Un bloque menos. 🍅" |
-| Descanso (Pomodoro) | Permisivo, amable | "Respirá. Descanso 2 de 4." |
-| Vacío / en reposo | Orientador suave | "Listo cuando vos quieras. Girá una cara para arrancar." |
-| Error / permiso denegado | Humano, con salida | "No pudimos activar el sonido. Tocá una vez y listo." |
+| Primer uso / onboarding | Invitador, simple | "Gira y suelta — arranca solo" |
+| En sesión (foco activo) | Casi mudo, no distraer | Deja hablar a la pantalla; nada de mensajes |
+| Pausa | Tranquilizador, sin culpa | "En pausa. Continúa cuando quieras." |
+| Fin de cuenta / logro | Cálido y breve | "¡Listo! Bloque completo. 🍅" |
+| Descanso (Pomodoro) | Permisivo, amable | "Respira. Descanso 2 de 4." |
+| Vacío / en reposo | Orientador suave | "Listo cuando quieras. Gira una cara para arrancar." |
+| Error / permiso denegado | Humano, con salida | "El navegador bloqueó las notificaciones. Actívalas y vuelve." |
 
 ### 9.4 Reglas rápidas
 
 **Hacer**
 - Verbo de acción primero, frases cortas.
-- Hablar de "vos", en singular y humano.
+- Hablar de "tú", en singular y humano.
 - Celebrar el progreso, corto y genuino.
 - Nombrar el beneficio, no el mecanismo ("a concentrarse", no "iniciando countdown").
 
@@ -249,31 +249,34 @@ La voz es constante; el **tono** cambia según dónde está el usuario:
 - Signos de admiración en cadena o mayúsculas gritadas.
 - Culpar o presionar: "perdiste tu racha", "no completaste".
 - Textos largos durante el foco.
-- Mezclar registros (vos/tú).
+- Mezclar registros o usar voseo ("Girá", "soltá", "contanos").
 
 ### 9.5 Reescrituras concretas (antes → después)
 
 Sobre los textos reales de la app:
 
-| Lugar | Antes | Después (voseo) |
+| Lugar | Antes | Después (latino neutro) |
 |---|---|---|
-| Título (H1) | El cubo Pomodoro que se controla volteándolo. | Girá el cubo. El tiempo arranca solo. |
-| Intro (hero) | Gira el dial y suelta: la cara que queda arriba define el modo y arranca sola. La cara del reloj pausa la cuenta y volver a la misma cara la reanuda. | Girá y soltá: la cara de arriba elige el tiempo y arranca sola. ¿Necesitás una pausa? Poné el reloj arriba. |
-| Reposo (`aria-live`) | Cubo en modo reloj. Gira una cara hacia arriba. | Listo cuando vos quieras. Girá una cara para arrancar. |
-| Pausa | Reloj arriba. Cuenta en pausa. | En pausa. Seguís cuando quieras. |
-| Reanudar | Cuenta reanudada en 10. | Seguimos con los 10. |
+| Título (H1) | El cubo Pomodoro que se controla volteándolo. | Gira el cubo. El tiempo arranca solo. |
+| Intro (hero) | Gira el dial y suelta: la cara que queda arriba define el modo y arranca sola. La cara del reloj pausa la cuenta y volver a la misma cara la reanuda. | Gira y suelta: la cara de arriba elige el tiempo y arranca sola. ¿Necesitas una pausa? Pon el reloj arriba. |
+| Reposo (`aria-live`) | Cubo en modo reloj. Gira una cara hacia arriba. | Listo cuando quieras. Gira una cara para arrancar. |
+| Pausa | Reloj arriba. Cuenta en pausa. | En pausa. Continúa cuando quieras. |
+| Reanudar | Cuenta reanudada en 10. | Seguimos con 10 min. |
 | Inicio Pomodoro | Pomodoro iniciado. Bloque de trabajo 1 de 4. | A concentrarse. Bloque 1 de 4. |
 | Fin de cuenta | Tiempo cumplido. Volviendo a modo reloj. | ¡Listo! Bloque completo. 🍅 |
 | Fin de Pomodoro | Pomodoro completo. Volviendo a modo reloj. | ¡Cuatro bloques! Gran sesión, te la ganaste. |
-| Personalizado | Cuenta regresiva personalizada de 25 minutos. | Listo: 25 minutos. A darle. |
-| Hint Focus | Pantalla completa sólo con el cubo. El ambiente suena mientras Focus está activo. | Solo vos y el cubo, a pantalla completa. El ambiente te acompaña. |
-| Botón Reloj (panel) | Reloj · Pausa la cuenta | Reloj · Pausá cuando quieras |
+| Personalizado | Cuenta regresiva personalizada de 25 minutos. | Listo: 25 minutos. A concentrarse. |
+| Hint Focus | Pantalla completa sólo con el cubo. El ambiente suena mientras Focus está activo. | Solo tú y el cubo, a pantalla completa. El ambiente te acompaña. |
+| Botón Reloj (panel) | Reloj · Pausa la cuenta | Reloj · Pausa cuando quieras |
+| Compartir | (sin feedback al copiar) | ¡Link copiado! |
+| Notificaciones | (sin control visible) | Avisarme aunque esté en otra pestaña |
 
 ### 9.6 Alcance y aplicación
 
-- Los textos viven en `src/pages/Home.tsx` (hero, leyenda, chips, hints, mensajes `setLiveMessage`) y en las etiquetas de los controles.
+- **Todos** los textos de cara al usuario viven en `src/copy.ts`. Ningún componente inventa un string suelto: hero, leyenda, chips, hints, `setLiveMessage`, etiquetas ARIA, cuerpo de las notificaciones y título de la pestaña salen de ahí.
 - Los mensajes `aria-live` también los leen lectores de pantalla: mantener claros y con la misma voz.
-- Idealmente, centralizar los strings en un solo módulo (p. ej. `src/copy.ts`) para mantener consistencia y facilitar futuras traducciones.
+- `src/copy.test.ts` recorre el módulo entero y falla ante voseo, tecnicismos de pantalla ("countdown", "toggle", "display", "LED") o signos de admiración encadenados.
+- Fuera de `copy.ts` quedan solo dos textos de producto: `public/manifest.json` (PWA) e `index.html` (`<meta description>`). Cambian con el copy, no antes.
 
 ### 9.7 Cómo lo medimos
 

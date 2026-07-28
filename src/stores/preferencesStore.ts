@@ -13,6 +13,8 @@ export interface AlarmConfig {
 }
 
 export interface PanelSectionsCollapsed {
+  screenTools: boolean;
+  focusMode: boolean;
   alertType: boolean;
   finish: boolean;
 }
@@ -36,6 +38,9 @@ export interface PreferencesState {
   // Onboarding
   hasSeenOnboarding: boolean;
 
+  // Browser notifications (P1.3) — explicit opt-in, never assumed
+  notificationsEnabled: boolean;
+
   // Panel collapsible state (P1.5)
   panelSectionsCollapsed: PanelSectionsCollapsed;
 
@@ -53,6 +58,7 @@ export interface PreferencesState {
   setAlarms: (alarms: AlarmConfig[]) => void;
   updateAlarm: (id: string, patch: Partial<AlarmConfig>) => void;
   markOnboardingSeen: () => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
   togglePanelSectionCollapsed: (section: keyof PanelSectionsCollapsed) => void;
   setPanelSectionsCollapsed: (state: PanelSectionsCollapsed) => void;
   incrementDailySession: () => void;
@@ -68,6 +74,17 @@ const defaultAlarms: AlarmConfig[] = [
   { id: "alarm-1", hour: 8, minute: 0, enabled: false },
 ];
 
+/**
+ * Secondary panel sections start collapsed so a first contact only sees the
+ * readout and "Voltear a una cara" — progressive disclosure (P1.5).
+ */
+const defaultSectionsCollapsed: PanelSectionsCollapsed = {
+  screenTools: true,
+  focusMode: true,
+  alertType: true,
+  finish: true,
+};
+
 export const initialPreferences = {
   cubeFinish: "black" as CubeFinish,
   alertType: "sound" as AlertType,
@@ -75,7 +92,8 @@ export const initialPreferences = {
   customMinutes: 25,
   alarms: defaultAlarms,
   hasSeenOnboarding: false,
-  panelSectionsCollapsed: { alertType: false, finish: false },
+  notificationsEnabled: false,
+  panelSectionsCollapsed: defaultSectionsCollapsed,
   dailySessions: 0,
   dailySessionsDate: getTodayKey(),
   streakDays: 0,
@@ -100,7 +118,15 @@ export const usePreferencesStore = create<PreferencesState>()(
           ),
         })),
 
-      markOnboardingSeen: () => set({ hasSeenOnboarding: true }),
+      // Guarded: called from every first interaction, so it must be a no-op
+      // once the hint is gone.
+      markOnboardingSeen: () => {
+        if (get().hasSeenOnboarding) return;
+        set({ hasSeenOnboarding: true });
+      },
+
+      setNotificationsEnabled: (enabled) =>
+        set({ notificationsEnabled: enabled }),
 
       togglePanelSectionCollapsed: (section) =>
         set((state) => ({
@@ -156,12 +182,26 @@ export const usePreferencesStore = create<PreferencesState>()(
         customMinutes: state.customMinutes,
         alarms: state.alarms,
         hasSeenOnboarding: state.hasSeenOnboarding,
+        notificationsEnabled: state.notificationsEnabled,
         panelSectionsCollapsed: state.panelSectionsCollapsed,
         dailySessions: state.dailySessions,
         dailySessionsDate: state.dailySessionsDate,
         streakDays: state.streakDays,
         lastStreakDate: state.lastStreakDate,
       }),
+      // Sections are a nested object: a shallow merge would drop keys added
+      // after a visitor's preferences were already stored.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<PreferencesState>;
+        return {
+          ...current,
+          ...saved,
+          panelSectionsCollapsed: {
+            ...defaultSectionsCollapsed,
+            ...(saved.panelSectionsCollapsed ?? {}),
+          },
+        };
+      },
     },
   ),
 );

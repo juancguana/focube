@@ -1,8 +1,9 @@
 /**
  * Centralized user-facing strings for Focube.
  *
- * All text uses consistent voseo (vos) register per the Voice & Tone Guide (§9).
- * Import from here instead of inlining strings in components.
+ * All text uses neutral Latin American Spanish ("tú" register) per the
+ * Voice & Tone Guide (§9). Import from here instead of inlining strings
+ * in components — no user-facing literal should live in a component.
  *
  * ## Convention
  * - `hero` — page-level headings and descriptions
@@ -10,56 +11,58 @@
  * - `timer` — session lifecycle messages
  * - `controls` — button and action labels
  * - `onboarding` — first-visit hints
- * - `aria` — screen-reader labels
- * - `notifications` — browser notification body
  * - `panel` — section headings and labels inside the control panel
+ * - `chips` — heads-up display badges over the scene
+ * - `aria` — screen-reader-only labels
+ * - `notifications` — browser notification bodies (short, no context)
+ * - `title` — document title fragments
  */
 
 export const copy = {
   brand: "Focube",
 
   hero: {
-    title: "Girá el cubo. El tiempo arranca solo.",
+    title: "Gira el cubo. El tiempo arranca solo.",
     subtitle:
-      "Girá y soltá: la cara de arriba elige el tiempo y arranca sola. ¿Necesitás una pausa? Poné el reloj arriba.",
+      "Gira y suelta: la cara de arriba elige el tiempo y arranca sola. ¿Necesitas una pausa? Pon el reloj arriba.",
     eyebrow: "Focube",
   },
 
   states: {
-    idle: "Listo cuando vos quieras. Girá una cara para arrancar.",
-    paused: "En pausa. Seguís cuando quieras.",
+    idle: "Listo cuando quieras. Gira una cara para arrancar.",
+    paused: "En pausa. Continúa cuando quieras.",
     focusHint:
-      "Solo vos y el cubo, a pantalla completa. El ambiente te acompaña.",
+      "Solo tú y el cubo, a pantalla completa. El ambiente te acompaña.",
     pipPlaceholderTitle: "Cubo en el mini reproductor",
-    pipPlaceholderDesc: "Cerrá la ventana flotante para traerlo de vuelta.",
+    pipPlaceholderDesc: "Cierra la ventana flotante para traerlo de vuelta.",
+    legend:
+      "Usa las flechas para girar el cubo — cada una dice a qué cara va y qué hace · también puedes arrastrarlo o hacer clic en una cara",
   },
 
   timer: {
     pomodoroStart: (cycle: number, total: number) =>
       `A concentrarse. Bloque ${cycle} de ${total}.`,
-    pomodoroResumed: "Pomodoro reanudado.",
+    pomodoroResumed: "Seguimos. El bloque continúa.",
     pomodoroDone: "¡Cuatro bloques! Gran sesión, te la ganaste.",
-    countdownDone: "¡Listo! Bloque completo.",
-    phaseComplete: (phase: string, cycle: number, total: number) =>
-      `Fase completa. Siguiente: ${phase} ${cycle} de ${total}.`,
-    customStart: (minutes: number) => `Listo: ${minutes} minutos. A darle.`,
+    countdownDone: "¡Listo! Bloque completo. 🍅",
+    started: (minutes: number) => `Listo: ${minutes} minutos. A concentrarse.`,
     resumed: (label: string) => `Seguimos con ${label}.`,
-    paused: "En pausa. Seguís cuando quieras.",
-    faceStarted: (label: string, minutes: number) =>
-      `Cara ${label} arriba. Cuenta regresiva de ${minutes} minutos.`,
-    customStarted: (minutes: number) =>
-      `Cuenta regresiva personalizada de ${minutes} minutos.`,
+    paused: "En pausa. Continúa cuando quieras.",
     break: (cycle: number, total: number) =>
-      `Respirá. Descanso ${cycle} de ${total}.`,
-    reset: "Cubo reiniciado en modo reloj.",
+      `Respira. Descanso ${cycle} de ${total}.`,
+    work: "trabajo",
+    rest: "descanso",
+    reset: "Todo en cero. El reloj te espera.",
+    celebration: "¡Listo!",
   },
 
   controls: {
-    clock: "Reloj · Pausá cuando quieras",
-    try25: "Probá 25 min",
+    clock: "Reloj · Pausa cuando quieras",
     share: "Compartir mi setup",
+    shareCopied: "¡Link copiado!",
+    shareMessage: "Link copiado. Compártelo y se abre con tu setup.",
     testAlert: "Probar alarma",
-    feedback: "¿Ideas? Contanos",
+    feedback: "¿Ideas? Cuéntanos",
     proTeaser: "Pronto: más sonidos, temas y estadísticas",
     start: "Iniciar",
     pause: "Pausar",
@@ -68,13 +71,15 @@ export const copy = {
     exit: "Salir",
     mini: "Mini",
     pomodoro: "Pomodoro",
+    notify: "Avisarme aunque esté en otra pestaña",
+    notifyDenied: "El navegador bloqueó las notificaciones. Actívalas y vuelve.",
     addAlarm: (count: number, limit: number) =>
       `Añadir alarma (${count}/${limit})`,
   },
 
   onboarding: {
-    hint: "Girá y soltá — arranca solo",
-    cta: "Probá 25 min",
+    hint: "Gira y suelta — arranca solo",
+    cta: "Prueba 25 min",
   },
 
   panel: {
@@ -98,14 +103,14 @@ export const copy = {
       `Cuenta hacia arriba hasta ${maxMinutes} minutos.`,
     pomodoroAction: "25 / 5 · 4 ciclos",
     clockAction: "Pausa la cuenta",
+    pauseAction: "Pausa",
     cycle: (cycle: number, total: number) => `Ciclo ${cycle}/${total}`,
     work: "Trabajo",
     break: "Descanso",
-    stateLabel: "Estado",
-    arriba: "Arriba",
-    soltar: "Soltar",
-    clic: "Clic",
     faceUnknown: "—",
+    sessionsToday: (count: number) =>
+      count === 1 ? "1 sesión hoy" : `${count} sesiones hoy`,
+    streakDays: (days: number) => `${days} días seguidos`,
   },
 
   chips: {
@@ -120,20 +125,30 @@ export const copy = {
   },
 
   aria: {
-    cube: "Cubo Focube interactivo. Arrastralo para voltearlo. Teclas 5, 1, 3, 6 para las caras numéricas, P para pomodoro y C para el reloj.",
-    ledValue: (time: string, mode: string) =>
+    cube: "Cubo Focube interactivo. Arrástralo para voltearlo. Teclas 5, 1, 3, 6 para las caras numéricas, P para pomodoro y C para el reloj.",
+    readout: (time: string, mode: string) =>
       `Tiempo restante: ${time}, modo ${mode}`,
+    readoutClock: (time: string) => `Son las ${time}`,
+    readoutStopwatch: (time: string) => `Cronómetro en ${time}`,
+    previewSound: (label: string) => `Escuchar ${label}`,
+    collapseSection: (section: string) => `Mostrar u ocultar ${section}`,
     activateAlarm: (id: string) => `Activar alarma ${id}`,
     alarmTime: (id: string) => `Hora de la alarma ${id}`,
     deleteAlarm: (id: string) => `Eliminar alarma ${id}`,
   },
 
   notifications: {
-    timerComplete: (mode: string, minutes: number) =>
-      `¡Listo! Bloque de ${minutes} min — ${mode}`,
-    alarm: (time: string) => `Alarma ${time}.`,
-    pomodoroDone: "Pomodoro completo. Volviendo a modo reloj.",
-    countdownDone: "Tiempo cumplido. Volviendo a modo reloj.",
+    countdownDone: "¡Listo! Bloque completo.",
+    pomodoroDone: "¡Cuatro bloques! Gran sesión.",
+    phaseComplete: (phase: string) => `Bloque completo. Ahora ${phase}.`,
+    alarm: (time: string) => `Alarma de las ${time}.`,
+  },
+
+  title: {
+    work: "Trabajo",
+    countdown: "Temporizador",
+    clock: "Reloj",
+    paused: "En pausa",
   },
 } as const;
 

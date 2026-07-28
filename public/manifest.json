@@ -1,0 +1,21 @@
+{
+  "name": "Focube",
+  "short_name": "Focube",
+  "description": "Gira el cubo. El tiempo arranca solo.",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "categories": ["productivity", "utilities"],
+  "background_color": "#0A0B0D",
+  "theme_color": "#0A0B0D",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

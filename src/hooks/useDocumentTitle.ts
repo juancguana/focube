@@ -1,58 +1,61 @@
-import { useEffect, useRef } from "react";
-
-const DEFAULT_TITLE = "Focube";
+import { useEffect } from "react";
+import { copy } from "@/copy";
 
 /**
- * Updates `document.title` to reflect the current timer state.
+ * Updates `document.title` to reflect the current timer state, so the tab is
+ * useful while the user works somewhere else.
  *
- * While a timer runs, the title shows:
- *   `{mm:ss} · {mode} — Focube`
+ * Running:  `24:59 · Trabajo — Focube`
+ * Paused:   `24:59 · En pausa — Focube`
+ * Idle:     `Focube`
  *
- * When idle, paused, or completed, restores to "Focube".
- * Updates at most once per second to avoid thrashing.
+ * The title is derived from props, so it only changes when the readout does —
+ * the caller ticks once per second at most.
  */
+export type TitleMode = "countdown" | "pomodoro" | "clock" | null;
+
+/** Builds the tab title for a timer state. Pure, so it is directly testable. */
+export function formatTabTitle(
+  remainingMs: number,
+  mode: TitleMode,
+  isPaused: boolean,
+  isIdle: boolean,
+): string {
+  if (isIdle) {
+    return copy.brand;
+  }
+
+  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const formatted = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+  const modeLabel = isPaused
+    ? copy.title.paused
+    : mode === "pomodoro"
+      ? copy.title.work
+      : mode === "countdown"
+        ? copy.title.countdown
+        : copy.title.clock;
+
+  return `${formatted} · ${modeLabel} — ${copy.brand}`;
+}
+
 export function useDocumentTitle(
   remainingMs: number,
-  mode: "countdown" | "pomodoro" | "clock" | null,
+  mode: TitleMode,
   isPaused: boolean,
   isIdle: boolean,
 ) {
-  const lastTitleRef = useRef(document.title);
-
   useEffect(() => {
-    if (isIdle) {
-      if (document.title !== DEFAULT_TITLE) {
-        document.title = DEFAULT_TITLE;
-      }
-      return;
-    }
-
-    if (isPaused) {
-      if (document.title !== DEFAULT_TITLE) {
-        document.title = DEFAULT_TITLE;
-      }
-      return;
-    }
-
-    const totalSeconds = Math.ceil(remainingMs / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    const formatted = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-
-    let modeLabel = "";
-    if (mode === "pomodoro") {
-      modeLabel = "Trabajo";
-    } else if (mode === "countdown") {
-      modeLabel = "Temporizador";
-    } else {
-      modeLabel = "Reloj";
-    }
-
-    const nextTitle = `${formatted} · ${modeLabel} — Focube`;
-
-    if (lastTitleRef.current !== nextTitle) {
-      lastTitleRef.current = nextTitle;
-      document.title = nextTitle;
-    }
+    document.title = formatTabTitle(remainingMs, mode, isPaused, isIdle);
   }, [remainingMs, mode, isPaused, isIdle]);
+
+  // Leaving the page (or unmounting in tests) must not strand a countdown in
+  // the tab title.
+  useEffect(() => {
+    return () => {
+      document.title = copy.brand;
+    };
+  }, []);
 }

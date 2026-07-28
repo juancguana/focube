@@ -1,6 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { copy } from "./copy";
 
+/** Every leaf string, with functions resolved using sample arguments. */
+function collectStrings(node: unknown): string[] {
+  if (typeof node === "string") return [node];
+  if (typeof node === "function") {
+    // Every copy function takes numbers and/or strings; both sample sets are
+    // safe because the arguments are only interpolated, never inspected.
+    const fn = node as (...args: unknown[]) => string;
+    const samples = [
+      fn(1, 4),
+      fn("5 min", "Trabajo"),
+      fn(25),
+      fn("10:30"),
+    ].filter((value): value is string => typeof value === "string");
+    return samples;
+  }
+  if (node && typeof node === "object") {
+    return Object.values(node).flatMap(collectStrings);
+  }
+  return [];
+}
+
+const allStrings = collectStrings(copy);
+const allText = allStrings.join(" | ").toLowerCase();
+
 describe("copy.ts — string centralization", () => {
   it("tiene todas las categorías principales", () => {
     expect(copy).toHaveProperty("hero");
@@ -12,27 +36,61 @@ describe("copy.ts — string centralization", () => {
     expect(copy).toHaveProperty("notifications");
     expect(copy).toHaveProperty("panel");
     expect(copy).toHaveProperty("chips");
+    expect(copy).toHaveProperty("title");
     expect(copy).toHaveProperty("brand");
   });
+});
 
-  it("no contiene formas de 'tú' (gira, suelta, arrastra, usa, haz)", () => {
-    const allText = JSON.stringify(copy);
-    const tuForms = ["gira ", " suelta ", " arrastra ", " usa ", " haz "];
-    for (const form of tuForms) {
-      expect(allText.toLowerCase()).not.toContain(form);
+describe("copy.ts — registro neutro latinoamericano", () => {
+  /**
+   * Voseo markers: imperatives and present forms stressed on the last
+   * syllable. Any of these means the register slipped back to Rioplatense.
+   */
+  const voseoForms = [
+    "girá",
+    "soltá",
+    "arrastrá",
+    "usá",
+    "hacé",
+    "poné",
+    "probá",
+    "contanos",
+    "cerrá",
+    "tocá",
+    "seguís",
+    "necesitás",
+    "querés",
+    "respirá",
+    "pausá",
+    "vos ",
+    " vos",
+  ];
+
+  it.each(voseoForms)("no usa la forma voseante %s", (form) => {
+    expect(allText).not.toContain(form);
+  });
+
+  it("usa imperativos en tú en los textos clave", () => {
+    expect(copy.hero.title).toContain("Gira");
+    expect(copy.hero.subtitle).toContain("suelta");
+    expect(copy.onboarding.hint).toContain("Gira");
+    expect(copy.onboarding.cta).toContain("Prueba");
+  });
+
+  it("no deja jerga técnica de cara al usuario", () => {
+    for (const term of ["countdown", "toggle", "display", "led"]) {
+      expect(allText).not.toContain(term);
     }
   });
 
-  it("usa voseo en textos clave (girá, soltá)", () => {
-    const allText = JSON.stringify(copy);
-    expect(allText.toLowerCase()).toContain("girá");
-    expect(allText.toLowerCase()).toContain("soltá");
+  it("no encadena signos de admiración", () => {
+    for (const text of allStrings) {
+      expect(text).not.toMatch(/!{2,}|¡{2,}/);
+    }
   });
+});
 
-  it("hero.title es el esperado", () => {
-    expect(copy.hero.title).toBe("Girá el cubo. El tiempo arranca solo.");
-  });
-
+describe("copy.ts — interpolación", () => {
   it("timer.pomodoroStart genera string con ciclo", () => {
     const msg = copy.timer.pomodoroStart(1, 4);
     expect(msg).toContain("1");
@@ -40,15 +98,12 @@ describe("copy.ts — string centralization", () => {
     expect(msg).toContain("concentrarse");
   });
 
-  it("timer.customStarted incluye los minutos", () => {
-    const msg = copy.timer.customStarted(25);
-    expect(msg).toContain("25");
+  it("timer.started incluye los minutos", () => {
+    expect(copy.timer.started(25)).toContain("25");
   });
 
-  it("notifications.timerComplete incluye modo y minutos", () => {
-    const msg = copy.notifications.timerComplete("Trabajo", 25);
-    expect(msg).toContain("25");
-    expect(msg).toContain("Trabajo");
+  it("notifications.phaseComplete nombra la fase", () => {
+    expect(copy.notifications.phaseComplete("descanso")).toContain("descanso");
   });
 
   it("controls.addAlarm muestra contador", () => {
@@ -61,5 +116,16 @@ describe("copy.ts — string centralization", () => {
     const msg = copy.panel.customRange(1, 99);
     expect(msg).toContain("1");
     expect(msg).toContain("99");
+  });
+
+  it("panel.sessionsToday concuerda en número", () => {
+    expect(copy.panel.sessionsToday(1)).toBe("1 sesión hoy");
+    expect(copy.panel.sessionsToday(3)).toBe("3 sesiones hoy");
+  });
+
+  it("aria.readout describe tiempo y modo", () => {
+    const msg = copy.aria.readout("24:59", "Trabajo");
+    expect(msg).toContain("24:59");
+    expect(msg).toContain("Trabajo");
   });
 });

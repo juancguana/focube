@@ -1,34 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { copy } from "@/copy";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 interface CelebrationOverlayProps {
   /** Millis since epoch when the celebration started. 0 = no celebration. */
   startedAt: number;
+  /** Line shown under the ring — the session's own closing message. */
+  message?: string;
   onDismiss: () => void;
 }
 
 const DURATION_MS = 2000;
 
 /**
- * Full-screen celebration overlay shown briefly when a timer completes.
+ * Brief full-screen celebration shown when a session reaches zero.
  *
- * Auto-dismisses after {@link DURATION_MS}. Respects `prefers-reduced-motion`
- * by skipping the scale/pulse animation and showing only a static message.
+ * Auto-dismisses after {@link DURATION_MS}. With `prefers-reduced-motion` it
+ * fades instead of pulsing — the moment still lands, without the movement.
  */
 export function CelebrationOverlay({
   startedAt,
+  message,
   onDismiss,
 }: CelebrationOverlayProps) {
-  const [reduced, setReduced] = useState(false);
+  const reduced = useReducedMotion();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
 
   useEffect(() => {
     if (startedAt > 0) {
@@ -43,6 +40,7 @@ export function CelebrationOverlay({
     <AnimatePresence>
       {startedAt > 0 ? (
         <motion.div
+          aria-hidden="true"
           className="tk-celebration"
           initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
           animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1 }}
@@ -53,7 +51,7 @@ export function CelebrationOverlay({
             className="tk-celebration__ring"
             animate={
               reduced
-                ? {}
+                ? { opacity: 0.5 }
                 : {
                     scale: [1, 1.15, 1],
                     opacity: [0.6, 1, 0],
@@ -63,12 +61,15 @@ export function CelebrationOverlay({
           />
           <motion.span
             className="tk-celebration__text"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 10 }}
+            animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
             transition={{ delay: 0.15, duration: 0.3 }}
           >
-            ¡Listo!
+            {copy.timer.celebration}
           </motion.span>
+          {message ? (
+            <span className="tk-celebration__message">{message}</span>
+          ) : null}
         </motion.div>
       ) : null}
     </AnimatePresence>

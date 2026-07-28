@@ -6,7 +6,7 @@ interface OnboardingOverlayProps {
 
 /**
  * First-visit overlay that shows a hint about the cube controls
- * and a "Probá 25 min" CTA button.
+ * and a one-click CTA that starts a Pomodoro.
  *
  * Renders nothing after the first interaction — visibility is controlled
  * by the parent based on `hasSeenOnboarding`.

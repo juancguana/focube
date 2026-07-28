@@ -101,13 +101,24 @@ export default function SevenSegment({
   value,
   color = "#f4f7fb",
   className = "",
+  label = value,
 }: {
   value: string;
   color?: string;
   className?: string;
+  /**
+   * What screen readers announce for the readout. `null` hides it from them,
+   * for places where the same value is already announced as prose.
+   */
+  label?: string | null;
 }) {
   return (
-    <div aria-label={value} className={`seven-segment ${className}`} role="text">
+    <div
+      aria-hidden={label === null || undefined}
+      aria-label={label ?? undefined}
+      className={`seven-segment ${className}`}
+      role={label === null ? undefined : "img"}
+    >
       {value.split("").map((character, index) =>
         character === ":" ? (
           <Colon key={`colon-${index}`} color={color} />

@@ -22,6 +22,7 @@ import {
   PictureInPicture2,
   Plus,
   RotateCcw,
+  Share2,
   Smartphone,
   Timer,
   Trash2,
@@ -80,6 +81,13 @@ import {
   type CubeFinish,
 } from "@/stores/preferencesStore";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useUrlState } from "@/hooks/useUrlState";
+import {
+  getNotificationSupport,
+  requestNotificationPermission,
+  useNotifications,
+} from "@/hooks/useNotifications";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 type QuaternionTuple = [number, number, number, number];
 
@@ -432,6 +440,7 @@ function FocubeCube({
   inkColor,
   settleToken,
   alerting,
+  reducedMotion,
   tomato,
   screenProps,
   onPickFace,
@@ -443,6 +452,7 @@ function FocubeCube({
   inkColor: string;
   settleToken: number;
   alerting: boolean;
+  reducedMotion: boolean;
   tomato: boolean;
   screenProps: Omit<Parameters<typeof CubeScreen>[0], "alerting">;
   onPickFace: (faceId: FaceId) => void;
@@ -481,6 +491,15 @@ function FocubeCube({
       springStartRef.current.copy(group.quaternion);
       springRef.current = { value: 0, velocity: 0 };
       springActiveRef.current = true;
+    }
+
+    // Reduced motion: land on the face without the travel, and hold a steady
+    // scale so the alarm never pulses.
+    if (reducedMotion) {
+      springActiveRef.current = false;
+      group.quaternion.copy(targetQuaternion);
+      group.scale.set(1, 1, 1);
+      return;
     }
 
     if (springActiveRef.current) {
@@ -572,6 +591,33 @@ function FocubeCube({
 // Page
 // ---------------------------------------------------------------------------
 
+/**
+ * Three-note chime that closes a session. Shared by the real alert and the
+ * "Probar alarma" preview so what you hear is exactly what will ring.
+ */
+function playChime(context: AudioContext) {
+  const startAt = context.currentTime;
+
+  [0, 0.24, 0.48].forEach((offset, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    oscillator.type = index === 1 ? "square" : "sine";
+    oscillator.frequency.setValueAtTime(880 - index * 130, startAt + offset);
+
+    gain.gain.setValueAtTime(0.0001, startAt + offset);
+    gain.gain.exponentialRampToValueAtTime(0.2, startAt + offset + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + offset + 0.2);
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(startAt + offset);
+    oscillator.stop(startAt + offset + 0.26);
+  });
+}
+
+const VIBRATION_PATTERN = [220, 120, 220, 120, 320];
+
 /** What landing on a face will actually do, phrased as an outcome. */
 function describeFace(faceId: FaceId) {
   if (faceId === "screen") {
@@ -595,7 +641,7 @@ function faceName(faceId: FaceId) {
 /** Short outcome line for a control, without repeating the face name. */
 function faceActionLabel(faceId: FaceId) {
   if (faceId === "screen") {
-    return "Pausa";
+    return copy.panel.pauseAction;
   }
 
   if (faceId === "pomodoro") {
@@ -621,14 +667,19 @@ function CubeControls({
   topFaceId,
   onActivate,
   compact = false,
+  highlight = false,
 }: {
   directions: Direction[];
   topFaceId: FaceId;
   onActivate: (faceId: FaceId) => void;
   compact?: boolean;
+  /** First visit: the arrows pulse so the one gesture that matters is obvious. */
+  highlight?: boolean;
 }) {
   return (
-    <div className={`tk-dpad${compact ? " is-compact" : ""}`}>
+    <div
+      className={`tk-dpad${compact ? " is-compact" : ""}${highlight ? " is-highlighted" : ""}`}
+    >
       {directions.map((direction) => {
         const isCurrent = direction.target === topFaceId;
         return (
@@ -685,6 +736,23 @@ export default function Home() {
   const incrementDailySession = usePreferencesStore(
     (s) => s.incrementDailySession,
   );
+  const panelSectionsCollapsed = usePreferencesStore(
+    (s) => s.panelSectionsCollapsed,
+  );
+  const togglePanelSectionCollapsed = usePreferencesStore(
+    (s) => s.togglePanelSectionCollapsed,
+  );
+  const dailySessions = usePreferencesStore((s) => s.dailySessions);
+  const streakDays = usePreferencesStore((s) => s.streakDays);
+  const notificationsEnabled = usePreferencesStore(
+    (s) => s.notificationsEnabled,
+  );
+  const setNotificationsEnabled = usePreferencesStore(
+    (s) => s.setNotificationsEnabled,
+  );
+
+  const reducedMotion = useReducedMotion();
+  const notificationsSupported = getNotificationSupport() !== "unsupported";
 
   const [pose, setPose] = useState<Pose>({
     dialAngle: 0,
@@ -699,7 +767,15 @@ export default function Home() {
 
   const [session, setSession] = useState<Session>({ kind: "idle" });
   const [alertUntil, setAlertUntil] = useState(0);
-  const [celebrationStartedAt, setCelebrationStartedAt] = useState(0);
+  /** The last completed session: drives the celebration and the notification. */
+  const [completion, setCompletion] = useState<{
+    at: number;
+    message: string;
+    notification: string;
+  } | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+  /** Live for as long as the cube is easing into place — see `settleUntil`. */
+  const [settleUntil, setSettleUntil] = useState(0);
 
   const [screenTool, setScreenTool] = useState<ScreenTool>("clock");
   const [stopwatch, setStopwatch] = useState({
@@ -731,6 +807,8 @@ export default function Home() {
   const soundscapeRef = useRef<FocusSoundscape | null>(null);
   const firedAlarmRef = useRef<string | null>(null);
   const completionRef = useRef<number | null>(null);
+  const previewRef = useRef<FocusSoundscape | null>(null);
+  const previewTimersRef = useRef<number[]>([]);
 
   const alerting = now < alertUntil;
   /** Drives the paused blink; the screen is a texture, so it needs a tick. */
@@ -816,7 +894,7 @@ export default function Home() {
       setLiveMessage(message);
 
       if (alertType === "vibration") {
-        navigator.vibrate?.([220, 120, 220, 120, 320]);
+        navigator.vibrate?.(VIBRATION_PATTERN);
         return;
       }
 
@@ -826,33 +904,26 @@ export default function Home() {
 
       armAudioContext();
       const context = audioContextRef.current;
-      if (!context) {
-        return;
+      if (context) {
+        playChime(context);
       }
-
-      const startAt = context.currentTime;
-      [0, 0.24, 0.48].forEach((offset, index) => {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-
-        oscillator.type = index === 1 ? "square" : "sine";
-        oscillator.frequency.setValueAtTime(
-          880 - index * 130,
-          startAt + offset,
-        );
-
-        gain.gain.setValueAtTime(0.0001, startAt + offset);
-        gain.gain.exponentialRampToValueAtTime(0.2, startAt + offset + 0.03);
-        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + offset + 0.2);
-
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start(startAt + offset);
-        oscillator.stop(startAt + offset + 0.26);
-      });
     },
     [alertType, armAudioContext],
   );
+
+  /** Plays the alert exactly as it will ring, without waiting for a session. */
+  const previewAlert = useCallback(() => {
+    if (alertType === "vibration") {
+      navigator.vibrate?.(VIBRATION_PATTERN);
+      return;
+    }
+
+    armAudioContext();
+    const context = audioContextRef.current;
+    if (context) {
+      playChime(context);
+    }
+  }, [alertType, armAudioContext]);
 
   // -- orientation ----------------------------------------------------------
 
@@ -903,6 +974,8 @@ export default function Home() {
     }
 
     setSettleToken((token) => token + 1);
+    // Keeps the render loop awake just long enough for the cube to land.
+    setSettleUntil(Date.now() + SETTLE_SECONDS * 1000 + 120);
     setTopFaceId(faceId);
   }, []);
 
@@ -914,6 +987,8 @@ export default function Home() {
   const activateFace = useCallback(
     (faceId: FaceId) => {
       armAudioContext();
+      // Any first move — arrow, drag, click or key — retires the hint.
+      markOnboardingSeen();
 
       // Pomodoro is an action, not a face: it runs the cycle and shows the 5
       // pose, mirroring the physical cube's "put 5 up and long-press".
@@ -989,9 +1064,7 @@ export default function Home() {
           };
         }
 
-        setLiveMessage(
-          copy.timer.faceStarted(face.label, face.minutes ?? 0),
-        );
+        setLiveMessage(copy.timer.started(face.minutes ?? 0));
         completionRef.current = null;
         return {
           kind: "countdown" as const,
@@ -1002,7 +1075,7 @@ export default function Home() {
         };
       });
     },
-    [armAudioContext, moveToFace],
+    [armAudioContext, markOnboardingSeen, moveToFace],
   );
 
   // Keep the PiP native listener pointing at the current activateFace.
@@ -1053,7 +1126,7 @@ export default function Home() {
     }
 
     completionRef.current = session.endsAt;
-    setCelebrationStartedAt(Date.now());
+    const at = Date.now();
 
     if (session.kind === "pomodoro") {
       const step = getNextPomodoroStep({
@@ -1064,31 +1137,55 @@ export default function Home() {
       });
 
       if (!step || step.phase === "done") {
-        fireAlert(copy.notifications.pomodoroDone);
+        setCompletion({
+          at,
+          message: copy.timer.pomodoroDone,
+          notification: copy.notifications.pomodoroDone,
+        });
+        fireAlert(copy.timer.pomodoroDone);
         incrementDailySession();
         setSession({ kind: "idle" });
         moveToFace("screen");
         return;
       }
 
+      const isBreak = step.phase !== "work";
+      const phaseName = isBreak ? copy.timer.rest : copy.timer.work;
+
+      setCompletion({
+        at,
+        // A finished work block is the win worth celebrating; the break that
+        // follows is announced, not applauded.
+        message: isBreak
+          ? copy.timer.break(step.cycle, POMODORO_TOTAL_CYCLES)
+          : copy.timer.pomodoroStart(step.cycle, POMODORO_TOTAL_CYCLES),
+        notification: copy.notifications.phaseComplete(phaseName),
+      });
       fireAlert(
-        copy.timer.phaseComplete(
-          step.phase === "work" ? "trabajo" : "descanso",
-          step.cycle,
-          POMODORO_TOTAL_CYCLES,
-        ),
+        isBreak
+          ? copy.timer.break(step.cycle, POMODORO_TOTAL_CYCLES)
+          : copy.timer.pomodoroStart(step.cycle, POMODORO_TOTAL_CYCLES),
       );
+      if (isBreak) {
+        // Only completed work blocks count as focus sessions.
+        incrementDailySession();
+      }
       setSession({
         kind: "pomodoro",
         durationMs: step.durationMs,
         endsAt: Date.now() + step.durationMs,
-        phase: step.phase === "work" ? "work" : "break",
+        phase: isBreak ? "break" : "work",
         cycle: step.cycle,
       });
       return;
     }
 
-    fireAlert(copy.notifications.countdownDone);
+    setCompletion({
+      at,
+      message: copy.timer.countdownDone,
+      notification: copy.notifications.countdownDone,
+    });
+    fireAlert(copy.timer.countdownDone);
     incrementDailySession();
     setSession({ kind: "idle" });
 
@@ -1110,6 +1207,18 @@ export default function Home() {
 
   // Both focus mode and the mini player are "focus"; the ambience follows them.
   const focusActive = isFocusMode || isMiniPlayer;
+  /**
+   * The render loop only runs free while something is actually moving: a live
+   * session, a drag, the alarm pulse or a cube still settling. At rest the
+   * canvas repaints on demand — React commits (a new clock texture) still
+   * invalidate it, so nothing goes stale (P2.4).
+   */
+  const needsContinuousRender =
+    !reducedMotion &&
+    ((session.kind !== "idle" && !session.paused) ||
+      dragging ||
+      alerting ||
+      now < settleUntil);
 
   /** The soundscape is the point of focus mode, so it follows that state. */
   useEffect(() => {
@@ -1190,6 +1299,14 @@ export default function Home() {
     stopwatch.running,
     stopwatchMs,
   ]);
+
+  /** The readout is segments, so screen readers get it as prose in context. */
+  const readoutLabel =
+    session.kind !== "idle"
+      ? copy.aria.readout(screenContent.primary, screenContent.caption)
+      : screenTool === "stopwatch" && (stopwatch.running || stopwatchMs > 0)
+        ? copy.aria.readoutStopwatch(screenContent.primary)
+        : copy.aria.readoutClock(screenContent.primary);
 
   // At rest the dial sits fully lit like the physical clock; a running session
   // drains it, and the stopwatch sweeps it once per minute.
@@ -1345,11 +1462,92 @@ export default function Home() {
     session.kind === "idle",
   );
 
+  // URL deep link state (P1.2)
+  const { getShareableUrl } = useUrlState();
+
+  // Browser notifications when a session ends and the tab is hidden (P1.3)
+  useNotifications(
+    notificationsEnabled,
+    completion?.at ?? null,
+    completion?.notification ?? "",
+  );
+
   const topFace = getFaceById(topFaceId);
 
   const dismissCelebration = useCallback(() => {
-    setCelebrationStartedAt(0);
+    setCompletion(null);
   }, []);
+
+  /** Turning the toggle on is the moment the permission prompt earns itself. */
+  const toggleNotifications = useCallback(async () => {
+    if (notificationsEnabled) {
+      setNotificationsEnabled(false);
+      return;
+    }
+
+    const permission = await requestNotificationPermission();
+    setNotificationsEnabled(permission === "granted");
+    if (permission === "denied") {
+      setLiveMessage(copy.controls.notifyDenied);
+    }
+  }, [notificationsEnabled, setNotificationsEnabled]);
+
+  const shareSetup = useCallback(async () => {
+    try {
+      await navigator.clipboard?.writeText(getShareableUrl());
+      setShareCopied(true);
+      setLiveMessage(copy.controls.shareMessage);
+      window.setTimeout(() => setShareCopied(false), 2200);
+    } catch {
+      // Clipboard denied: the URL bar already carries the same setup.
+    }
+  }, [getShareableUrl]);
+
+  // Sound previews are transient objects; leaving the page must not strand one
+  // playing in the audio graph.
+  useEffect(() => {
+    return () => {
+      previewTimersRef.current.forEach((id) => window.clearTimeout(id));
+      previewRef.current?.dispose();
+    };
+  }, []);
+
+  const previewSoundscape = useCallback(
+    (id: SoundscapeId) => {
+      armAudioContext();
+      const context = audioContextRef.current;
+      if (!context) {
+        return;
+      }
+
+      // A second click restarts the preview instead of stacking a new layer.
+      previewTimersRef.current.forEach((timerId) =>
+        window.clearTimeout(timerId),
+      );
+      previewTimersRef.current = [];
+      previewRef.current?.dispose();
+
+      const preview = new FocusSoundscape(context);
+      previewRef.current = preview;
+      preview.setMode(id);
+
+      previewTimersRef.current.push(
+        window.setTimeout(() => {
+          preview.setMode("off");
+          // Let the fade finish before tearing the nodes down.
+          previewTimersRef.current.push(
+            window.setTimeout(() => {
+              preview.dispose();
+              if (previewRef.current === preview) {
+                previewRef.current = null;
+              }
+            }, 300),
+          );
+        }, 2500),
+      );
+    },
+    [armAudioContext],
+  );
 
   return (
     <main className={`tk-app${isFocusMode ? " is-focus" : ""}`}>
@@ -1373,7 +1571,8 @@ export default function Home() {
       ) : null}
 
       <CelebrationOverlay
-        startedAt={celebrationStartedAt}
+        startedAt={completion?.at ?? 0}
+        message={completion?.message}
         onDismiss={dismissCelebration}
       />
 
@@ -1499,10 +1698,7 @@ export default function Home() {
             ) : null}
           </div>
 
-          <div className="tk-legend">
-            Usá las <b>flechas</b> para girar el cubo — cada una dice a qué cara
-            va y qué hace · también <b>arrastralo</b> o hacé <b>clic</b> en una cara
-          </div>
+          <div className="tk-legend">{copy.states.legend}</div>
 
           <div className="tk-stage-tools">
             {pipSupported ? (
@@ -1544,6 +1740,7 @@ export default function Home() {
             >
               <div className="tk-canvas">
                 <Canvas
+                  frameloop={needsContinuousRender ? "always" : "demand"}
                   camera={{
                     fov: focusActive ? 29 : 34,
                     position: focusActive
@@ -1581,6 +1778,7 @@ export default function Home() {
                   onHoverFace={setHoverFaceId}
                   onPickFace={activateFace}
                   quaternion={quaternion}
+                  reducedMotion={reducedMotion}
                   tomato={session.kind === "pomodoro"}
                   screenProps={{
                     alarms,
@@ -1621,6 +1819,7 @@ export default function Home() {
               <CubeControls
                 compact={isMiniPlayer}
                 directions={directions}
+                highlight={!hasSeenOnboarding}
                 onActivate={activateFace}
                 topFaceId={session.kind === "pomodoro" ? "pomodoro" : topFaceId}
               />
@@ -1631,9 +1830,13 @@ export default function Home() {
         <aside className="tk-panel">
           <div className="tk-readout">
             <span>{screenContent.caption}</span>
+            {/* The readout is drawn as segments, so screen readers get the
+                value as text instead. */}
+            <p className="sr-only">{readoutLabel}</p>
             <SevenSegment
               className="tk-readout__value"
               color={screenContent.accent}
+              label={null}
               value={screenContent.primary}
             />
             {session.kind === "pomodoro" ? (
@@ -1646,6 +1849,18 @@ export default function Home() {
                 {formatWeekday(currentDate)} {formatCalendarDate(currentDate)}
               </small>
             )}
+
+            {/* Daily focus counter (P2.1) — visible without opening anything. */}
+            {dailySessions > 0 ? (
+              <div className="tk-streak">
+                <span>{copy.panel.sessionsToday(dailySessions)}</span>
+                {streakDays > 1 ? (
+                  <span className="tk-streak__days">
+                    · {copy.panel.streakDays(streakDays)}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="tk-card">
@@ -1682,7 +1897,21 @@ export default function Home() {
           </div>
 
           <div className="tk-card">
-            <h2>{copy.panel.fromClockFace}</h2>
+            <button
+              aria-expanded={!panelSectionsCollapsed.screenTools}
+              className="tk-card__header"
+              onClick={() => togglePanelSectionCollapsed("screenTools")}
+              type="button"
+            >
+              <h2>{copy.panel.fromClockFace}</h2>
+              {panelSectionsCollapsed.screenTools ? (
+                <ChevronDown size={15} />
+              ) : (
+                <ChevronUp size={15} />
+              )}
+            </button>
+            {!panelSectionsCollapsed.screenTools ? (
+              <>
             <div className="tk-tabs">
               {(["clock", "custom", "stopwatch", "alarms"] as ScreenTool[]).map(
                 (tool) => (
@@ -1728,6 +1957,7 @@ export default function Home() {
                 <div className="tk-tool__row">
                   <SevenSegment
                     className="tk-tool__value"
+                    label={`${customMinutesStore} min`}
                     value={String(customMinutesStore).padStart(2, "0")}
                   />
                   <button
@@ -1738,9 +1968,7 @@ export default function Home() {
                           `${customMinutesStore} min`,
                           null,
                         );
-                      setLiveMessage(
-                        copy.timer.customStarted(customMinutesStore),
-                      );
+                      setLiveMessage(copy.timer.started(customMinutesStore));
                     }}
                     type="button"
                   >
@@ -1862,158 +2090,197 @@ export default function Home() {
                 </button>
               </div>
             ) : null}
-          </div>
-
-          <div className="tk-card">
-            <h2>{copy.panel.focusMode}</h2>
-            <div className="tk-tabs">
-              {SOUNDSCAPES.map((option) => (
-                <div key={option.id} className="tk-tab-wrap">
-                  <button
-                    className={`tk-tab${soundscape === option.id ? " is-active" : ""}`}
-                    onClick={() => {
-                      setSoundscape(option.id as SoundscapeId);
-                      armAudioContext();
-                    }}
-                    type="button"
-                  >
-                    {option.id === "off" ? (
-                      <VolumeX size={15} />
-                    ) : option.id === "ticks" ? (
-                      <Timer size={15} />
-                    ) : (
-                      <Music size={15} />
-                    )}
-                    {option.label}
-                  </button>
-                  {option.id !== "off" ? (
-                    <button
-                      className="tk-tab__preview"
-                      aria-label={`Escuchar ${option.label}`}
-                      onClick={() => {
-                        armAudioContext();
-                        const ctx = audioContextRef.current;
-                        if (!ctx) return;
-                        // Create a temporary preview soundscape
-                        const preview = new FocusSoundscape(ctx);
-                        preview.setMode(option.id as SoundscapeId);
-                        setTimeout(() => {
-                          preview.setMode("off");
-                          // Small delay to let the "off" fade take effect
-                          setTimeout(() => preview.dispose(), 300);
-                        }, 2500);
-                      }}
-                      type="button"
-                    >
-                      <Volume2 size={12} />
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-            <p className="tk-hint">{copy.states.focusHint}</p>
-          </div>
-
-          <div className="tk-card">
-            <h2>{copy.panel.alertType}</h2>
-            <div className="tk-tabs">
-              {(
-                [
-                  { id: "sound" as const, label: copy.panel.sound, icon: <Volume2 size={15} /> },
-                  {
-                    id: "vibration" as const,
-                    label: copy.panel.vibration,
-                    icon: <Smartphone size={15} />,
-                  },
-                  {
-                    id: "silent" as const,
-                    label: copy.panel.silent,
-                    icon: <BellOff size={15} />,
-                  },
-                ] as Array<{ id: AlertType; label: string; icon: JSX.Element }>
-              ).map((option) => (
-                <button
-                  key={option.id}
-                  className={`tk-tab${alertType === option.id ? " is-active" : ""}`}
-                  onClick={() => {
-                    setAlertType(option.id as AlertType);
-                    if (option.id === "sound") {
-                      armAudioContext();
-                    }
-                  }}
-                  type="button"
-                >
-                  {option.icon}
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            {alertType !== "silent" ? (
-              <button
-                className="tk-button tk-button--small"
-                onClick={() => {
-                  armAudioContext();
-                  const context = audioContextRef.current;
-                  if (!context) return;
-                  const startAt = context.currentTime;
-                  [0, 0.24, 0.48].forEach((offset, index) => {
-                    const osc = context.createOscillator();
-                    const gain = context.createGain();
-                    osc.type = index === 1 ? "square" : "sine";
-                    osc.frequency.setValueAtTime(
-                      880 - index * 130,
-                      startAt + offset,
-                    );
-                    gain.gain.setValueAtTime(0.0001, startAt + offset);
-                    gain.gain.exponentialRampToValueAtTime(
-                      0.2,
-                      startAt + offset + 0.03,
-                    );
-                    gain.gain.exponentialRampToValueAtTime(
-                      0.0001,
-                      startAt + offset + 0.2,
-                    );
-                    osc.connect(gain);
-                    gain.connect(context.destination);
-                    osc.start(startAt + offset);
-                    osc.stop(startAt + offset + 0.26);
-                  });
-                }}
-                type="button"
-              >
-                {copy.controls.testAlert}
-              </button>
+              </>
             ) : null}
           </div>
 
           <div className="tk-card">
-            <h2>{copy.panel.finish}</h2>
-            <div className="tk-colors">
-              {Object.entries(CUBE_PALETTES).map(([key, palette]) => (
-                <button
-                  key={key}
-                  aria-label={palette.name}
-                  className={`tk-swatch${cubeFinish === key ? " is-active" : ""}`}
-                  onClick={() => setCubeFinish(key as CubeFinish)}
-                  style={{ background: palette.body }}
-                  type="button"
-                />
-              ))}
-            </div>
-            <div className="tk-tool__row">
-              <button className="tk-button" onClick={resetAll} type="button">
-                <RotateCcw size={15} />
-                {copy.controls.reset}
-              </button>
-              <button
-                className="tk-button"
-                onClick={() => activateFace("pomodoro")}
-                type="button"
-              >
-                <AlarmClock size={15} />
-                {copy.controls.pomodoro}
-              </button>
-            </div>
+            <button
+              aria-expanded={!panelSectionsCollapsed.focusMode}
+              className="tk-card__header"
+              onClick={() => togglePanelSectionCollapsed("focusMode")}
+              type="button"
+            >
+              <h2>{copy.panel.focusMode}</h2>
+              {panelSectionsCollapsed.focusMode ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+            </button>
+            {!panelSectionsCollapsed.focusMode ? (
+              <>
+                <div className="tk-tabs">
+                  {SOUNDSCAPES.map((option) => (
+                    <div key={option.id} className="tk-tab-wrap">
+                      <button
+                        className={`tk-tab${soundscape === option.id ? " is-active" : ""}`}
+                        onClick={() => {
+                          setSoundscape(option.id as SoundscapeId);
+                          armAudioContext();
+                        }}
+                        type="button"
+                      >
+                        {option.id === "off" ? (
+                          <VolumeX size={15} />
+                        ) : option.id === "ticks" ? (
+                          <Timer size={15} />
+                        ) : (
+                          <Music size={15} />
+                        )}
+                        {option.label}
+                      </button>
+                      {option.id !== "off" ? (
+                        <button
+                          aria-label={copy.aria.previewSound(option.label)}
+                          className="tk-tab__preview"
+                          onClick={() =>
+                            previewSoundscape(option.id as SoundscapeId)
+                          }
+                          type="button"
+                        >
+                          <Volume2 size={12} />
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+                <p className="tk-hint">{copy.states.focusHint}</p>
+              </>
+            ) : null}
+          </div>
+
+          <div className="tk-card">
+            <button
+              aria-expanded={!panelSectionsCollapsed.alertType}
+              className="tk-card__header"
+              onClick={() => togglePanelSectionCollapsed("alertType")}
+              type="button"
+            >
+              <h2>{copy.panel.alertType}</h2>
+              {panelSectionsCollapsed.alertType ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+            </button>
+            {!panelSectionsCollapsed.alertType ? (
+              <>
+                <div className="tk-tabs">
+                  {(
+                    [
+                      { id: "sound" as const, label: copy.panel.sound, icon: <Volume2 size={15} /> },
+                      {
+                        id: "vibration" as const,
+                        label: copy.panel.vibration,
+                        icon: <Smartphone size={15} />,
+                      },
+                      {
+                        id: "silent" as const,
+                        label: copy.panel.silent,
+                        icon: <BellOff size={15} />,
+                      },
+                    ] as Array<{ id: AlertType; label: string; icon: JSX.Element }>
+                  ).map((option) => (
+                    <button
+                      key={option.id}
+                      className={`tk-tab${alertType === option.id ? " is-active" : ""}`}
+                      onClick={() => {
+                        setAlertType(option.id as AlertType);
+                        if (option.id === "sound") {
+                          armAudioContext();
+                        }
+                      }}
+                      type="button"
+                    >
+                      {option.icon}
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="tk-tool__row">
+                  {alertType !== "silent" ? (
+                    <button
+                      className="tk-button tk-button--small"
+                      onClick={previewAlert}
+                      type="button"
+                    >
+                      {copy.controls.testAlert}
+                    </button>
+                  ) : null}
+
+                  {/* Explicit opt-in (P1.3): the permission prompt only ever
+                      appears because this was switched on. */}
+                  {notificationsSupported ? (
+                    <label className="tk-switch">
+                      <input
+                        checked={notificationsEnabled}
+                        onChange={() => void toggleNotifications()}
+                        type="checkbox"
+                      />
+                      <span>{copy.controls.notify}</span>
+                    </label>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          <div className="tk-card">
+            <button
+              aria-expanded={!panelSectionsCollapsed.finish}
+              className="tk-card__header"
+              onClick={() => togglePanelSectionCollapsed("finish")}
+              type="button"
+            >
+              <h2>{copy.panel.finish}</h2>
+              {panelSectionsCollapsed.finish ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+            </button>
+            {!panelSectionsCollapsed.finish ? (
+              <>
+                <div className="tk-colors">
+                  {Object.entries(CUBE_PALETTES).map(([key, palette]) => (
+                    <button
+                      key={key}
+                      aria-label={palette.name}
+                      className={`tk-swatch${cubeFinish === key ? " is-active" : ""}`}
+                      onClick={() => setCubeFinish(key as CubeFinish)}
+                      style={{ background: palette.body }}
+                      type="button"
+                    />
+                  ))}
+                </div>
+                <div className="tk-tool__row">
+                  <button className="tk-button" onClick={resetAll} type="button">
+                    <RotateCcw size={15} />
+                    {copy.controls.reset}
+                  </button>
+                  <button
+                    className="tk-button"
+                    onClick={() => void shareSetup()}
+                    type="button"
+                  >
+                    <Share2 size={15} />
+                    {shareCopied
+                      ? copy.controls.shareCopied
+                      : copy.controls.share}
+                  </button>
+                  <button
+                    className="tk-button"
+                    onClick={() => activateFace("pomodoro")}
+                    type="button"
+                  >
+                    <AlarmClock size={15} />
+                    {copy.controls.pomodoro}
+                  </button>
+                </div>
+
+                {/* Feedback & pro teaser (P2.2, P2.3) */}
+                <div className="tk-tool__row">
+                  <a
+                    className="tk-button tk-button--small"
+                    href="mailto:feedback@focube.app"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {copy.controls.feedback}
+                  </a>
+                  <span className="tk-teaser">{copy.controls.proTeaser}</span>
+                </div>
+              </>
+            ) : null}
           </div>
         </aside>
       </section>

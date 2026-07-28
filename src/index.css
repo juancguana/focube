@@ -142,7 +142,12 @@ input:focus-visible,
   backdrop-filter: blur(14px);
   overflow: hidden;
   cursor: grab;
-  touch-action: none;
+  /*
+   * The stage is tall enough to fill a phone screen, so claiming every touch
+   * would trap the page: a finger anywhere on it could not scroll. Vertical
+   * pans stay with the browser here and only the cube itself takes them.
+   */
+  touch-action: pan-y;
 }
 
 .tk-stage.is-dragging {
@@ -159,6 +164,8 @@ input:focus-visible,
 .tk-canvas {
   position: absolute;
   inset: 0;
+  /* Over the cube both gestures belong to the dial: turning and tipping. */
+  touch-action: none;
 }
 
 .tk-stage canvas {
@@ -461,11 +468,55 @@ input:focus-visible,
 }
 
 .tk-card h2 {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 0.78rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: rgba(20, 23, 29, 0.55);
+}
+
+.tk-card__header {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+}
+
+.tk-card__header:focus-visible {
+  outline: 3px solid rgba(45, 156, 219, 0.8);
+  outline-offset: 3px;
+}
+
+.tk-card__header h2 {
+  margin: 0;
+}
+
+.tk-streak {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(20, 23, 29, 0.08);
+  display: flex;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: rgba(20, 23, 29, 0.7);
+  flex-wrap: wrap;
+}
+
+.tk-streak__days {
+  font-weight: 600;
+  color: #2d9cdb;
+}
+
+.tk-teaser {
+  font-size: 0.75rem;
+  color: rgba(20, 23, 29, 0.45);
+  font-style: italic;
 }
 
 .tk-faces {
@@ -766,4 +817,91 @@ input:focus-visible,
 
 .tk-tab__preview:active {
   background: #d5dbe3;
+}
+
+.tk-celebration__message {
+  position: relative;
+  margin-top: 88px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #14171d;
+  text-align: center;
+  max-width: 260px;
+  text-shadow: 0 2px 8px rgba(255, 255, 255, 0.6);
+}
+
+/* ------------------------------------------------------------------- switch */
+
+.tk-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: rgba(20, 23, 29, 0.7);
+  cursor: pointer;
+}
+
+.tk-switch input {
+  width: 18px;
+  height: 18px;
+  accent-color: #2d9cdb;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------- first-visit arrow accent */
+
+/*
+ * On a first visit the arrows breathe so the one gesture that matters is
+ * obvious without reading anything. Only the glow animates — the buttons are
+ * positioned with transforms that an animation would overwrite.
+ */
+.tk-dpad.is-highlighted .tk-dpad__btn:not(:disabled) {
+  animation: tk-arrow-pulse 1.9s ease-in-out infinite;
+  border-color: rgba(45, 156, 219, 0.75);
+}
+
+@keyframes tk-arrow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(45, 156, 219, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(45, 156, 219, 0.22);
+  }
+}
+
+/* --------------------------------------------------------- reduced motion */
+
+/*
+ * A focus timer stays open for hours; movement someone did not ask for is a
+ * reason to close the tab. Everything decorative stops, nothing disappears.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .tk-dpad.is-highlighted .tk-dpad__btn:not(:disabled) {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(45, 156, 219, 0.22);
+  }
+
+  .tk-dpad__btn:hover:not(:disabled),
+  .tk-onboarding__cta:hover,
+  .tk-onboarding__cta:active {
+    transform: none;
+  }
+
+  .tk-dpad__btn--up:hover:not(:disabled) {
+    transform: translateX(-50%);
+  }
+
+  .tk-dpad__btn--down:hover:not(:disabled) {
+    transform: translateX(-50%);
+  }
 }
