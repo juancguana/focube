@@ -1,12 +1,13 @@
 import {
   type KeyboardEvent,
+  memo,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, RoundedBox } from "@react-three/drei";
 import { flushSync } from "react-dom";
 import {
@@ -83,6 +84,7 @@ import {
   type CubeFinish,
 } from "@/stores/preferencesStore";
 import { todayKey } from "@/utils/dates";
+import { clockTickMs, needsContinuousRender } from "@/utils/renderBudget";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useUrlState } from "@/hooks/useUrlState";
 import {
@@ -446,6 +448,57 @@ function TomatoStem() {
       })}
     </group>
   );
+}
+
+/**
+ * The contact shadow is meant to be baked once — that is what `frames={1}` asks
+ * for. It was not being baked: drei keeps that frame counter in a plain `let` in
+ * its component body, so every parent re-render reset it to zero and the shadow
+ * silently re-rendered the scene into a 512² target, twice-blurred, on every
+ * single frame. It was half of all the draw calls in the app.
+ *
+ * Memoised with no props, it renders once and a parent re-render can never
+ * reach it again. (Remounting it instead would leak: drei never disposes those
+ * render targets.)
+ */
+const BakedContactShadows = memo(function BakedContactShadows() {
+  return (
+    <ContactShadows
+      blur={2.4}
+      color="#5f6a76"
+      frames={1}
+      opacity={0.4}
+      position={[0, -0.7, 0]}
+      scale={5.5}
+    />
+  );
+});
+
+/**
+ * The shadow map is a second render pass, and it is only worth paying for
+ * while the cube is actually moving. Frozen the rest of the time, it costs
+ * nothing and looks identical, because a still cube casts a still shadow.
+ *
+ * `poseToken` covers the case the `moving` flag cannot: under reduced motion the
+ * cube teleports onto its face without ever animating, so the frozen map has to
+ * be refreshed off the pose change itself.
+ */
+function ShadowBudget({
+  moving,
+  poseToken,
+}: {
+  moving: boolean;
+  poseToken: number;
+}) {
+  const gl = useThree((state) => state.gl);
+
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = moving;
+    // One more pass either way, so the map we freeze matches where it stopped.
+    gl.shadowMap.needsUpdate = true;
+  }, [gl, moving, poseToken]);
+
+  return null;
 }
 
 function FocubeCube({
@@ -1244,10 +1297,17 @@ export default function Home() {
     return () => window.removeEventListener("appinstalled", onInstalled);
   }, []);
 
+  const tickMs = clockTickMs({
+    sessionActive: session.kind !== "idle",
+    stopwatchRunning: stopwatch.running,
+    alerting,
+    settling: now < settleUntil,
+  });
+
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 200);
+    const id = window.setInterval(() => setNow(Date.now()), tickMs);
     return () => window.clearInterval(id);
-  }, []);
+  }, [tickMs]);
 
   /** Countdown reaching zero: alert, then advance pomodoro or fall back to clock. */
   useEffect(() => {
@@ -1365,17 +1425,18 @@ export default function Home() {
   // Both focus mode and the mini player are "focus"; the ambience follows them.
   const focusActive = isFocusMode || isMiniPlayer;
   /**
-   * The render loop only runs free while something is actually moving: a live
-   * session, a drag, the alarm pulse or a cube still settling. At rest the
-   * canvas repaints on demand — React commits (a new clock texture) still
-   * invalidate it, so nothing goes stale (P2.4).
+   * The render loop only runs free while something is actually moving: a drag,
+   * the alarm pulse or a cube still settling. At rest — and during a running
+   * session, where the cube is motionless — the canvas repaints on demand.
+   * React commits (a new clock texture) still invalidate it, so nothing goes
+   * stale (P2.4).
    */
-  const needsContinuousRender =
-    !reducedMotion &&
-    ((session.kind !== "idle" && !session.paused) ||
-      dragging ||
-      alerting ||
-      now < settleUntil);
+  const continuousRender = needsContinuousRender({
+    dragging,
+    alerting,
+    settling: now < settleUntil,
+    reducedMotion,
+  });
 
   /** The soundscape is the point of focus mode, so it follows that state. */
   useEffect(() => {
@@ -1938,7 +1999,11 @@ export default function Home() {
             >
               <div className="tk-canvas">
                 <Canvas
-                  frameloop={needsContinuousRender ? "always" : "demand"}
+                  frameloop={continuousRender ? "always" : "demand"}
+                  // R3F would follow the display 1:1 (its default is [1, 2]),
+                  // which quadruples the fragment work on a retina panel for a
+                  // scene of flat-shaded boxes that gains nothing from it.
+                  dpr={[1, 1.5]}
                   camera={{
                     fov: focusActive ? 29 : 34,
                     position: focusActive
@@ -1950,6 +2015,10 @@ export default function Home() {
                   <color
                     args={[focusActive ? "#080a0f" : "#eceff3"]}
                     attach="background"
+                  />
+                  <ShadowBudget
+                    moving={continuousRender}
+                    poseToken={settleToken}
                   />
               <ambientLight intensity={1.15} />
               <directionalLight
@@ -2003,14 +2072,7 @@ export default function Home() {
                 <planeGeometry args={[10, 10]} />
                 <shadowMaterial opacity={0.16} />
               </mesh>
-              <ContactShadows
-                blur={2.4}
-                color="#5f6a76"
-                frames={1}
-                opacity={0.4}
-                position={[0, -0.7, 0]}
-                scale={5.5}
-              />
+              <BakedContactShadows />
                 </Canvas>
               </div>
 
