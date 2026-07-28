@@ -17,6 +17,7 @@
  * - `notifications` — browser notification bodies (short, no context)
  * - `title` — document title fragments
  * - `links` — outbound URLs
+ * - `og` — Open Graph / Twitter card copy (social link previews)
  */
 
 export const copy = {
@@ -117,6 +118,14 @@ export const copy = {
 
   links: {
     feedback: "https://github.com/juancguana/focube/issues",
+  },
+
+  og: {
+    title: "Focube — temporizador Pomodoro en un cubo 3D",
+    description:
+      "Gira el cubo y el tiempo arranca solo: temporizador Pomodoro en un cubo 3D que se controla volteándolo.",
+    imageAlt:
+      "Cubo Focube en verde y negro con el mensaje: gira el cubo, el tiempo arranca solo.",
   },
 
   chips: {

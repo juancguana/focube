@@ -4,10 +4,12 @@ import {
   type CubeFinish,
   type SoundscapeId,
 } from "@/stores/preferencesStore";
+import type { ModeFaceId } from "@/utils/cube";
 
 const PARAM_FINISH = "finish";
 const PARAM_SOUNDSCAPE = "sound";
 const PARAM_MINUTES = "min";
+const PARAM_MODE = "mode";
 
 const VALID_FINISHES: ReadonlySet<string> = new Set([
   "black",
@@ -23,6 +25,14 @@ const VALID_SOUNDSCAPES: ReadonlySet<string> = new Set([
   "both",
 ]);
 
+const VALID_MODES: ReadonlySet<string> = new Set([
+  "five",
+  "ten",
+  "thirty",
+  "sixty",
+  "pomodoro",
+]);
+
 const MIN_SHARED_MINUTES = 1;
 const MAX_SHARED_MINUTES = 120;
 
@@ -30,6 +40,7 @@ export interface SharedSetup {
   finish: CubeFinish | null;
   soundscape: SoundscapeId | null;
   customMinutes: number | null;
+  mode: ModeFaceId | null;
 }
 
 /**
@@ -45,6 +56,7 @@ export function parseSetupParams(search: string): SharedSetup {
   const soundscape = params.get(PARAM_SOUNDSCAPE);
   const rawMinutes = params.get(PARAM_MINUTES);
   const minutes = rawMinutes === null ? NaN : Number(rawMinutes);
+  const mode = params.get(PARAM_MODE);
 
   return {
     finish:
@@ -59,6 +71,7 @@ export function parseSetupParams(search: string): SharedSetup {
       minutes <= MAX_SHARED_MINUTES
         ? minutes
         : null,
+    mode: mode && VALID_MODES.has(mode) ? (mode as ModeFaceId) : null,
   };
 }
 
@@ -66,11 +79,15 @@ export function buildSetupParams(
   finish: CubeFinish,
   soundscape: SoundscapeId,
   customMinutes: number,
+  mode?: ModeFaceId | null,
 ): URLSearchParams {
   const params = new URLSearchParams();
   params.set(PARAM_FINISH, finish);
   params.set(PARAM_SOUNDSCAPE, soundscape);
   params.set(PARAM_MINUTES, String(customMinutes));
+  if (mode) {
+    params.set(PARAM_MODE, mode);
+  }
   return params;
 }
 
@@ -78,16 +95,35 @@ export function buildSetupParams(
  * Reads Focube preferences from the URL on mount and keeps the URL in sync
  * with the store as they change.
  *
- * Provides `getShareableUrl()` for the share button and `hasUrlParams` to
- * hint that the page was loaded with shared state.
+ * `currentMode` is the face/mode the app currently shows (or `null` at
+ * rest). It MUST be threaded into the sync effect below: that effect
+ * rebuilds the URL from the store on every render, and if it built the URL
+ * without the current mode, a `?mode=...` link would be silently stripped
+ * from the address bar right after load — breaking re-sharing before the
+ * user ever gets a chance to copy it.
+ *
+ * Provides `getShareableUrl()` for the share button, `hasUrlParams` to hint
+ * that the page was loaded with shared state, and `sharedMode` — the mode
+ * requested by the incoming link, captured once during the first render so
+ * it stays stable across re-renders (see the lazy ref initialization below).
  */
-export function useUrlState() {
+export function useUrlState(currentMode: ModeFaceId | null) {
   const cubeFinish = usePreferencesStore((s) => s.cubeFinish);
   const setCubeFinish = usePreferencesStore((s) => s.setCubeFinish);
   const soundscape = usePreferencesStore((s) => s.soundscape);
   const setSoundscape = usePreferencesStore((s) => s.setSoundscape);
   const customMinutesStore = usePreferencesStore((s) => s.customMinutes);
   const setCustomMinutesStore = usePreferencesStore((s) => s.setCustomMinutes);
+
+  // Computed during the render phase (not an effect) so the value is already
+  // correct by the time ANY mount effect runs — including this hook's own
+  // "apply URL params" effect below and any effect in the calling component.
+  // `undefined` means "not computed yet"; every render after the first just
+  // reads the cached value back.
+  const sharedModeRef = useRef<ModeFaceId | null | undefined>(undefined);
+  if (sharedModeRef.current === undefined) {
+    sharedModeRef.current = parseSetupParams(window.location.search).mode;
+  }
 
   const appliedRef = useRef(false);
 
@@ -122,18 +158,28 @@ export function useUrlState() {
     if (!isDirtyRef.current && !window.location.search) return;
     isDirtyRef.current = true;
 
-    const params = buildSetupParams(cubeFinish, soundscape, customMinutesStore);
+    const params = buildSetupParams(
+      cubeFinish,
+      soundscape,
+      customMinutesStore,
+      currentMode,
+    );
     const newUrl =
       window.location.pathname + "?" + params.toString() + window.location.hash;
     window.history.replaceState(null, "", newUrl);
-  }, [cubeFinish, soundscape, customMinutesStore]);
+  }, [cubeFinish, soundscape, customMinutesStore, currentMode]);
 
   const getShareableUrl = useCallback(() => {
-    const params = buildSetupParams(cubeFinish, soundscape, customMinutesStore);
+    const params = buildSetupParams(
+      cubeFinish,
+      soundscape,
+      customMinutesStore,
+      currentMode,
+    );
     return window.location.origin + window.location.pathname + "?" + params.toString();
-  }, [cubeFinish, soundscape, customMinutesStore]);
+  }, [cubeFinish, soundscape, customMinutesStore, currentMode]);
 
   const hasUrlParams = window.location.search.length > 1;
 
-  return { getShareableUrl, hasUrlParams };
+  return { getShareableUrl, hasUrlParams, sharedMode: sharedModeRef.current };
 }

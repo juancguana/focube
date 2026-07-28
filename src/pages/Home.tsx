@@ -781,6 +781,10 @@ export default function Home() {
     notification: string;
   } | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  /** `?mode=pomodoro` deep link: highlights the CTA instead of posing the
+   * cube — posing would misleadingly show the "5 min" face. Cleared on the
+   * first `activateFace` or after 8s. */
+  const [pomodoroSuggested, setPomodoroSuggested] = useState(false);
   /** Live for as long as the cube is easing into place — see `settleUntil`. */
   const [settleUntil, setSettleUntil] = useState(0);
 
@@ -823,6 +827,14 @@ export default function Home() {
   // Pomodoro is a session, not a face, so it overrides the face-derived mode.
   const mode: CubeMode =
     session.kind === "pomodoro" ? "pomodoro" : getModeForFace(topFaceId);
+  // The mode reported to useUrlState for the shareable link (P1.2/Slice B):
+  // `null` while resting on the clock face, otherwise the current face/session.
+  const currentMode: ModeFaceId | null =
+    session.kind === "pomodoro"
+      ? "pomodoro"
+      : topFaceId === "screen"
+        ? null
+        : topFaceId;
   const currentDate = useMemo(() => new Date(now), [now]);
 
   // The active finish: the chosen colour normally, or the Pomodoro finish while
@@ -996,6 +1008,8 @@ export default function Home() {
       armAudioContext();
       // Any first move — arrow, drag, click or key — retires the hint.
       markOnboardingSeen();
+      // Any gesture also retires a `?mode=pomodoro` deep-link suggestion.
+      setPomodoroSuggested(false);
 
       // Pomodoro is an action, not a face: it runs the cycle and shows the 5
       // pose, mirroring the physical cube's "put 5 up and long-press".
@@ -1474,8 +1488,28 @@ export default function Home() {
     session.kind === "idle",
   );
 
-  // URL deep link state (P1.2)
-  const { getShareableUrl } = useUrlState();
+  // URL deep link state (P1.2 / Slice B: ?mode=... preselect)
+  const { getShareableUrl, sharedMode } = useUrlState(currentMode);
+
+  // Apply an incoming `?mode=...` link once on mount. A shared link only
+  // preselects: it never starts a timer and never touches the AudioContext.
+  // `pomodoro` is special — `activateFace("pomodoro")` poses the "five" face
+  // internally, so posing it here would misleadingly read as "5 min";
+  // instead we just highlight the CTA.
+  useEffect(() => {
+    if (sharedMode === null) return;
+
+    if (sharedMode === "pomodoro") {
+      setPomodoroSuggested(true);
+      const timeout = window.setTimeout(
+        () => setPomodoroSuggested(false),
+        8000,
+      );
+      return () => window.clearTimeout(timeout);
+    }
+
+    moveToFace(sharedMode);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Browser notifications when a session ends and the tab is hidden (P1.3)
   useNotifications(
@@ -2278,7 +2312,7 @@ export default function Home() {
                       : copy.controls.share}
                   </button>
                   <button
-                    className="tk-button"
+                    className={`tk-button${pomodoroSuggested ? " is-suggested" : ""}`}
                     onClick={() => activateFace("pomodoro")}
                     type="button"
                   >

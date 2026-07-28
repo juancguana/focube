@@ -8,6 +8,7 @@ describe("parseSetupParams — links compartidos (P1.2)", () => {
       finish: "blue",
       soundscape: "ticks",
       customMinutes: 45,
+      mode: null,
     });
   });
 
@@ -41,6 +42,7 @@ describe("parseSetupParams — links compartidos (P1.2)", () => {
       finish: null,
       soundscape: null,
       customMinutes: null,
+      mode: null,
     });
   });
 });
@@ -52,6 +54,50 @@ describe("buildSetupParams", () => {
       finish: "lavender",
       soundscape: "both",
       customMinutes: 15,
+      mode: null,
     });
+  });
+});
+
+describe("mode compartido — deep link (Slice B)", () => {
+  it("acepta cada modo válido", () => {
+    for (const mode of ["five", "ten", "thirty", "sixty", "pomodoro"]) {
+      expect(parseSetupParams(`?mode=${mode}`).mode).toBe(mode);
+    }
+  });
+
+  it("descarta valores desconocidos o maliciosos (entrada no confiable)", () => {
+    expect(parseSetupParams("?mode=screen").mode).toBeNull();
+    expect(parseSetupParams("?mode=").mode).toBeNull();
+    expect(parseSetupParams("?mode=FIVE").mode).toBeNull();
+    expect(parseSetupParams("?mode=%3Cscript%3E").mode).toBeNull();
+  });
+
+  it("sin mode en la URL no propone nada", () => {
+    expect(parseSetupParams("?finish=blue").mode).toBeNull();
+  });
+
+  it("buildSetupParams omite mode cuando es null o se omite", () => {
+    const withoutArg = buildSetupParams("blue", "ticks", 25);
+    const withNull = buildSetupParams("blue", "ticks", 25, null);
+    expect(withoutArg.has("mode")).toBe(false);
+    expect(withNull.has("mode")).toBe(false);
+    expect(withoutArg.toString()).not.toContain("mode=");
+  });
+
+  it("buildSetupParams incluye mode cuando se pasa", () => {
+    const params = buildSetupParams("blue", "ticks", 25, "pomodoro");
+    expect(parseSetupParams(`?${params.toString()}`).mode).toBe("pomodoro");
+  });
+
+  it("el modo compartido sobrevive aunque el resto del setup cambie (regresión del efecto de sincronización)", () => {
+    // El efecto de sincronización de useUrlState reconstruye la URL en cada
+    // cambio del store; si no recibiera el modo actual como argumento en
+    // cada llamada, `mode` desaparecería de la URL apenas cambiara el
+    // acabado, el sonido o los minutos, rompiendo el re-compartido del link.
+    const first = buildSetupParams("black", "off", 25, "pomodoro");
+    const second = buildSetupParams("blue", "both", 45, "pomodoro");
+    expect(parseSetupParams(`?${first.toString()}`).mode).toBe("pomodoro");
+    expect(parseSetupParams(`?${second.toString()}`).mode).toBe("pomodoro");
   });
 });

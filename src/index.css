@@ -658,6 +658,24 @@ input:focus-visible,
   color: #ffffff;
 }
 
+/* Highlights the Pomodoro CTA for a `?mode=pomodoro` shared link. The cube
+   itself stays at rest — posing the "five" face would misread as 5 min. */
+.tk-button.is-suggested {
+  border-color: #17a673;
+  box-shadow: 0 0 0 3px rgba(23, 166, 115, 0.25);
+  animation: tk-suggest-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tk-suggest-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(23, 166, 115, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(23, 166, 115, 0.12);
+  }
+}
+
 .tk-alarm {
   display: flex;
   align-items: center;

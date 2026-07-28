@@ -48,6 +48,14 @@ describe("copy.ts — canal de feedback público", () => {
   });
 });
 
+describe("copy.ts — tarjeta de vista previa social (og)", () => {
+  it("og expone title, description e imageAlt como texto no vacío", () => {
+    expect(copy.og.title.length).toBeGreaterThan(0);
+    expect(copy.og.description.length).toBeGreaterThan(0);
+    expect(copy.og.imageAlt.length).toBeGreaterThan(0);
+  });
+});
+
 describe("copy.ts — registro neutro latinoamericano", () => {
   /**
    * Voseo markers: imperatives and present forms stressed on the last
