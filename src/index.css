@@ -155,7 +155,11 @@ input:focus-visible,
 }
 
 .tk-stage.is-fullscreen {
+  /* `dvh` tracks the visible viewport as the mobile address bar comes and
+     goes; `vh` does not, so it leaves the bottom of focus mode off-screen.
+     The `vh` line stays first as a fallback. */
   min-height: 100vh;
+  min-height: 100dvh;
   border: 0;
   border-radius: 0;
   background: radial-gradient(circle at top, #1b2130, #05070b);
@@ -816,6 +820,26 @@ input:focus-visible,
   }
 
   /*
+   * The hero is the first-use guidance, so it stays — but at desktop scale it
+   * was eating 230px, over a quarter of a phone screen, before the cube got a
+   * single pixel. Tightened rather than dropped.
+   */
+  .tk-hero {
+    margin-bottom: 14px;
+  }
+
+  .tk-hero h1 {
+    margin: 10px 0 8px;
+    max-width: none;
+    font-size: clamp(1.7rem, 7.5vw, 2.4rem);
+  }
+
+  .tk-hero p {
+    font-size: 0.9rem;
+    line-height: 1.35;
+  }
+
+  /*
    * Narrow layout: the stage stops being a canvas with things floating over
    * it and becomes an ordinary column.
    *
@@ -835,7 +859,14 @@ input:focus-visible,
     align-items: start;
     gap: 10px;
     padding: 12px;
-    min-height: 0;
+    /*
+     * Fills the phone screen rather than sitting at a fixed box. Capped so a
+     * tall device still leaves the panel within reach of a short scroll, and
+     * floored so a small one keeps a usable cube. `dvh` and not `vh`: on iOS
+     * `vh` measures the viewport with the address bar hidden, so a `100vh`
+     * stage is always taller than what you can actually see.
+     */
+    min-height: clamp(400px, 74dvh, 660px);
     border-radius: 24px;
   }
 
@@ -850,20 +881,64 @@ input:focus-visible,
     grid-column: 1;
     grid-row: 1;
     padding: 0;
+    gap: 6px;
+  }
+
+  /*
+   * The two chips share a ~190px column with the Mini/Focus buttons. At
+   * desktop padding they cannot both fit, so they wrapped onto a second row
+   * and cost the cube 48px of height for no added information. Shrunk to fit
+   * on one line — they are a status readout, not a control, so they can give
+   * up size before anything touchable does.
+   */
+  .tk-chip {
+    gap: 5px;
+    padding: 6px 9px;
+  }
+
+  .tk-chip span {
+    font-size: 0.6rem;
+    letter-spacing: 0.06em;
+  }
+
+  .tk-chip strong {
+    font-size: 0.78rem;
   }
 
   .tk-stage-tools {
     grid-column: 2;
     grid-row: 1;
     justify-content: flex-end;
+    gap: 6px;
+  }
+
+  /*
+   * Narrower so the two status chips beside them fit on one line — but only
+   * horizontally. The smaller label costs height too, so the vertical padding
+   * grows to pay it back: these are the two real controls on the stage and
+   * they have to stay at a 44px touch target.
+   */
+  .tk-tool-btn {
+    gap: 5px;
+    padding: 13px 11px;
+    font-size: 0.74rem;
   }
 
   .tk-scene-slot {
     grid-column: 1 / -1;
     grid-row: 2;
     position: relative;
-    /* Grows with the stage but never collapses below a usable cube. */
-    min-height: 340px;
+    /*
+     * `align-items: start` above is what the chips and tools row needs, but it
+     * applies to every child — so this slot used to sit at its `min-height`
+     * and ignore the rest of its row. On a 390x844 phone that row is 660px
+     * tall and the cube was taking 340 of it, leaving a third of the screen
+     * empty below the arrows. Stretching is the whole point here: the cube
+     * should claim every pixel the stage can spare.
+     */
+    align-self: stretch;
+    /* A floor for short screens, not a target. */
+    min-height: 260px;
   }
 
   .tk-legend {
@@ -927,6 +1002,27 @@ input:focus-visible,
 @media (max-width: 460px) {
   .tk-dpad:not(.is-compact) {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  /*
+   * Every pixel the chrome gives back goes to the cube. Trimmed to the point
+   * where the buttons still clear a 44px touch target — below that this stops
+   * being a usability win and becomes a usability bug.
+   */
+  .tk-dpad:not(.is-compact) .tk-dpad__btn {
+    padding: 6px 4px;
+    gap: 0;
+  }
+
+  .tk-dpad:not(.is-compact) .tk-dpad__arrow svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .tk-legend {
+    padding: 7px 10px;
+    font-size: 0.68rem;
+    line-height: 1.3;
   }
 }
 
