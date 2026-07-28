@@ -110,9 +110,13 @@ export const copy = {
       `x${multiplier} · ${workMinutes} min`,
     clockAction: "Pausa la cuenta",
     pauseAction: "Pausa",
-    cycle: (cycle: number, total: number) => `Ciclo ${cycle}/${total}`,
     work: "Trabajo",
     break: "Descanso",
+    // Lives on the cube face, under the countdown. A slash and not a colon:
+    // the face is seven-segment, where "01:04" is indistinguishable from a
+    // clock reading — which is precisely how it was being misread.
+    pomodoroCaption: (phase: string, cycle: number, total: number) =>
+      `${phase} ${cycle}/${total}`,
     faceUnknown: "—",
     sessionsToday: (count: number) =>
       count === 1 ? "1 sesión hoy" : `${count} sesiones hoy`,

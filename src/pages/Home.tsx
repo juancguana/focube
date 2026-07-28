@@ -1542,9 +1542,18 @@ export default function Home() {
     if (session.kind === "pomodoro") {
       return {
         primary: formatDigitalTime(remainingMs),
-        secondaryLabel: session.phase === "work" ? "WK" : "BR",
-        secondaryValue: `0${session.cycle}:0${POMODORO_TOTAL_CYCLES}`,
-        caption: session.phase === "work" ? copy.panel.work : copy.panel.break,
+        // The cycle used to live here as "WK 01:04", in the one slot every
+        // other mode fills with the wall clock — and on a seven-segment face
+        // it read as a wrong time rather than as "block 1 of 4". It moved to
+        // the caption, where a slash cannot be mistaken for a clock, and the
+        // time came back so the cube tells you the hour in every mode.
+        secondaryLabel: formatWeekday(currentDate),
+        secondaryValue: formatClockTime(currentDate),
+        caption: copy.panel.pomodoroCaption(
+          session.phase === "work" ? copy.panel.work : copy.panel.break,
+          session.cycle,
+          POMODORO_TOTAL_CYCLES,
+        ),
         accent: alerting ? ACCENTS.alert : ACCENTS[session.phase],
       };
     }
@@ -2168,16 +2177,11 @@ export default function Home() {
               label={null}
               value={screenContent.primary}
             />
-            {session.kind === "pomodoro" ? (
-              <small>
-                {copy.panel.cycle(session.cycle, POMODORO_TOTAL_CYCLES)} ·{" "}
-                {session.phase === "work" ? copy.panel.work : copy.panel.break}
-              </small>
-            ) : (
-              <small>
-                {formatWeekday(currentDate)} {formatCalendarDate(currentDate)}
-              </small>
-            )}
+            {/* The heading above already reads "Trabajo 1/4", so this line no
+                longer repeats the cycle and shows the date in every mode. */}
+            <small>
+              {formatWeekday(currentDate)} {formatCalendarDate(currentDate)}
+            </small>
 
             {/* Daily focus counter (P2.1) — visible without opening anything,
                 dismissible for the rest of the day. */}

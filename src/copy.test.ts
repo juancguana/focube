@@ -165,4 +165,30 @@ describe("copy.ts — interpolación", () => {
     expect(msg).toContain("3");
     expect(msg).toContain("75");
   });
+
+  describe("panel.pomodoroCaption", () => {
+    it("nombra la fase y el ciclo", () => {
+      const msg = copy.panel.pomodoroCaption(copy.panel.work, 1, 4);
+      expect(msg).toContain(copy.panel.work);
+      expect(msg).toContain("1");
+      expect(msg).toContain("4");
+    });
+
+    /**
+     * The whole point of moving the cycle here: on a seven-segment face
+     * `01:04` is indistinguishable from a clock reading, which is exactly how
+     * it was misread. A slash never is.
+     */
+    it("no usa dos puntos, que en el LED se leen como una hora", () => {
+      expect(copy.panel.pomodoroCaption(copy.panel.work, 1, 4)).not.toContain(
+        ":",
+      );
+    });
+
+    it("no rellena con ceros a la izquierda", () => {
+      expect(copy.panel.pomodoroCaption(copy.panel.break, 2, 4)).toContain(
+        "2/4",
+      );
+    });
+  });
 });
