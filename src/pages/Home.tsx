@@ -30,6 +30,9 @@ import {
 } from "lucide-react";
 import * as THREE from "three";
 import SevenSegment from "@/components/SevenSegment";
+import { OnboardingOverlay } from "@/components/OnboardingOverlay";
+import { CelebrationOverlay } from "@/components/CelebrationOverlay";
+import { copy } from "@/copy";
 import { createLedScreenTexture } from "@/utils/ledScreen";
 import { drawSevenSegmentText, measureText } from "@/utils/sevenSegment";
 import {
@@ -47,7 +50,6 @@ import {
   STOPWATCH_MAX_MS,
   TIP_ANGLES,
   type Alarm,
-  type AlertType,
   type CubeColor,
   type CubeMode,
   type FaceConfig,
@@ -72,6 +74,12 @@ import {
   snapDialStep,
   tipForFace,
 } from "@/utils/cube";
+import {
+  usePreferencesStore,
+  type AlertType,
+  type CubeFinish,
+} from "@/stores/preferencesStore";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type QuaternionTuple = [number, number, number, number];
 
@@ -567,11 +575,11 @@ function FocubeCube({
 /** What landing on a face will actually do, phrased as an outcome. */
 function describeFace(faceId: FaceId) {
   if (faceId === "screen") {
-    return "Pausa / reloj";
+    return `${copy.chips.reloj} / ${String(getFaceById("five")?.minutes)} min`;
   }
 
   if (faceId === "pomodoro") {
-    return "Pomodoro 25/5";
+    return `${copy.controls.pomodoro} 25/5`;
   }
 
   return `${getFaceById(faceId)?.minutes} min`;
@@ -579,7 +587,9 @@ function describeFace(faceId: FaceId) {
 
 /** Destination name for a control (Pomodoro is an action, not a real face). */
 function faceName(faceId: FaceId) {
-  return faceId === "pomodoro" ? "Pomodoro" : (getFaceById(faceId)?.label ?? "—");
+  return faceId === "pomodoro"
+    ? copy.controls.pomodoro
+    : (getFaceById(faceId)?.label ?? copy.panel.faceUnknown);
 }
 
 /** Short outcome line for a control, without repeating the face name. */
@@ -589,7 +599,7 @@ function faceActionLabel(faceId: FaceId) {
   }
 
   if (faceId === "pomodoro") {
-    return "25 / 5 · 4";
+    return copy.panel.pomodoroAction;
   }
 
   return `${getFaceById(faceId)?.minutes} min`;
@@ -658,7 +668,24 @@ const SETTLE_SECONDS = 0.38;
 type Pose = { dialAngle: number; tipAngle: number };
 
 export default function Home() {
-  const [cubeColor, setCubeColor] = useState<CubeColor>("black");
+  // Store-driven preferences
+  const cubeFinish = usePreferencesStore((s) => s.cubeFinish);
+  const setCubeFinish = usePreferencesStore((s) => s.setCubeFinish);
+  const alertType = usePreferencesStore((s) => s.alertType);
+  const setAlertType = usePreferencesStore((s) => s.setAlertType);
+  const soundscape = usePreferencesStore((s) => s.soundscape);
+  const setSoundscape = usePreferencesStore((s) => s.setSoundscape);
+  const customMinutesStore = usePreferencesStore((s) => s.customMinutes);
+  const setCustomMinutesStore = usePreferencesStore((s) => s.setCustomMinutes);
+  const alarms = usePreferencesStore((s) => s.alarms);
+  const hasSeenOnboarding = usePreferencesStore((s) => s.hasSeenOnboarding);
+  const markOnboardingSeen = usePreferencesStore((s) => s.markOnboardingSeen);
+  const updateAlarmStore = usePreferencesStore((s) => s.updateAlarm);
+  const setAlarms = usePreferencesStore((s) => s.setAlarms);
+  const incrementDailySession = usePreferencesStore(
+    (s) => s.incrementDailySession,
+  );
+
   const [pose, setPose] = useState<Pose>({
     dialAngle: 0,
     tipAngle: TIP_ANGLES.clock,
@@ -672,26 +699,19 @@ export default function Home() {
 
   const [session, setSession] = useState<Session>({ kind: "idle" });
   const [alertUntil, setAlertUntil] = useState(0);
-  const [alertType, setAlertType] = useState<AlertType>("sound");
+  const [celebrationStartedAt, setCelebrationStartedAt] = useState(0);
 
   const [screenTool, setScreenTool] = useState<ScreenTool>("clock");
-  const [customMinutes, setCustomMinutes] = useState(25);
   const [stopwatch, setStopwatch] = useState({
     running: false,
     startedAt: 0,
     accumulatedMs: 0,
   });
-  const [alarms, setAlarms] = useState<Alarm[]>([
-    { id: "alarm-1", hour: 8, minute: 0, enabled: false },
-  ]);
 
   const [now, setNow] = useState(() => Date.now());
   const [dragging, setDragging] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
-  const [soundscape, setSoundscape] = useState<SoundscapeId>("focus");
-  const [liveMessage, setLiveMessage] = useState(
-    "Cubo en modo reloj. Gira una cara hacia arriba.",
-  );
+  const [liveMessage, setLiveMessage] = useState<string>(copy.states.idle);
 
   const sceneShellRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({
@@ -725,7 +745,7 @@ export default function Home() {
   const finish =
     session.kind === "pomodoro"
       ? POMODORO_FINISH[session.phase]
-      : CUBE_PALETTES[cubeColor];
+      : CUBE_PALETTES[cubeFinish];
 
   /** Where the cube would land if you let go right now. */
   const previewFaceId = faceForPose(
@@ -901,7 +921,7 @@ export default function Home() {
         moveToFace("five");
         setSession((current) => {
           if (current.kind === "pomodoro" && current.paused) {
-            setLiveMessage("Pomodoro reanudado.");
+            setLiveMessage(copy.timer.pomodoroResumed);
             return {
               ...current,
               paused: false,
@@ -909,7 +929,7 @@ export default function Home() {
             };
           }
 
-          setLiveMessage("Pomodoro iniciado. Bloque de trabajo 1 de 4.");
+          setLiveMessage(copy.timer.pomodoroStart(1, POMODORO_TOTAL_CYCLES));
           const step = getNextPomodoroStep({
             enabled: true,
             cycle: 0,
@@ -944,7 +964,7 @@ export default function Home() {
             return current;
           }
 
-          setLiveMessage("Reloj arriba. Cuenta en pausa.");
+          setLiveMessage(copy.timer.paused);
           return {
             ...current,
             paused: true,
@@ -961,7 +981,7 @@ export default function Home() {
           current.paused &&
           current.faceId === faceId
         ) {
-          setLiveMessage(`Cuenta reanudada en ${face.label}.`);
+          setLiveMessage(copy.timer.resumed(face.label));
           return {
             ...current,
             paused: false,
@@ -970,7 +990,7 @@ export default function Home() {
         }
 
         setLiveMessage(
-          `Cara ${face.label} arriba. Cuenta regresiva de ${face.minutes} minutos.`,
+          copy.timer.faceStarted(face.label, face.minutes ?? 0),
         );
         completionRef.current = null;
         return {
@@ -1033,6 +1053,7 @@ export default function Home() {
     }
 
     completionRef.current = session.endsAt;
+    setCelebrationStartedAt(Date.now());
 
     if (session.kind === "pomodoro") {
       const step = getNextPomodoroStep({
@@ -1043,14 +1064,19 @@ export default function Home() {
       });
 
       if (!step || step.phase === "done") {
-        fireAlert("Pomodoro completo. Volviendo a modo reloj.");
+        fireAlert(copy.notifications.pomodoroDone);
+        incrementDailySession();
         setSession({ kind: "idle" });
         moveToFace("screen");
         return;
       }
 
       fireAlert(
-        `Fase completa. Siguiente: ${step.phase === "work" ? "trabajo" : "descanso"} ${step.cycle} de ${POMODORO_TOTAL_CYCLES}.`,
+        copy.timer.phaseComplete(
+          step.phase === "work" ? "trabajo" : "descanso",
+          step.cycle,
+          POMODORO_TOTAL_CYCLES,
+        ),
       );
       setSession({
         kind: "pomodoro",
@@ -1062,11 +1088,12 @@ export default function Home() {
       return;
     }
 
-    fireAlert("Tiempo cumplido. Volviendo a modo reloj.");
+    fireAlert(copy.notifications.countdownDone);
+    incrementDailySession();
     setSession({ kind: "idle" });
 
     window.setTimeout(() => moveToFace("screen"), 2600);
-  }, [fireAlert, moveToFace, remainingMs, session]);
+  }, [fireAlert, incrementDailySession, moveToFace, remainingMs, session]);
 
   /** Daily alarms ring regardless of the face that is currently up. */
   useEffect(() => {
@@ -1077,7 +1104,7 @@ export default function Home() {
 
     if (due && key && firedAlarmRef.current !== key) {
       firedAlarmRef.current = key;
-      fireAlert(`Alarma ${formatClockTime(currentDate)}.`);
+      fireAlert(copy.notifications.alarm(formatClockTime(currentDate)));
     }
   }, [alarms, currentDate, fireAlert]);
 
@@ -1122,7 +1149,7 @@ export default function Home() {
         primary: formatDigitalTime(remainingMs),
         secondaryLabel: session.phase === "work" ? "WK" : "BR",
         secondaryValue: `0${session.cycle}:0${POMODORO_TOTAL_CYCLES}`,
-        caption: session.phase === "work" ? "Trabajo" : "Descanso",
+        caption: session.phase === "work" ? copy.panel.work : copy.panel.break,
         accent: alerting ? ACCENTS.alert : ACCENTS[session.phase],
       };
     }
@@ -1142,7 +1169,7 @@ export default function Home() {
         primary: formatDigitalTime(stopwatchMs),
         secondaryLabel: formatWeekday(currentDate),
         secondaryValue: formatClockTime(currentDate),
-        caption: "Cronómetro",
+        caption: copy.panel.stopwatch,
         accent: alerting ? ACCENTS.alert : ACCENTS.clock,
       };
     }
@@ -1151,7 +1178,7 @@ export default function Home() {
       primary: formatClockTime(currentDate),
       secondaryLabel: formatWeekday(currentDate),
       secondaryValue: formatCalendarDate(currentDate),
-      caption: "Reloj",
+      caption: copy.panel.clock,
       accent: alerting ? ACCENTS.alert : ACCENTS.clock,
     };
   }, [
@@ -1256,7 +1283,7 @@ export default function Home() {
     setAlertUntil(0);
     setStopwatch({ running: false, startedAt: 0, accumulatedMs: 0 });
     activateFace("screen");
-    setLiveMessage("Cubo reiniciado en modo reloj.");
+    setLiveMessage(copy.timer.reset);
   }, [activateFace]);
 
   const handleKeyDown = useCallback(
@@ -1304,15 +1331,25 @@ export default function Home() {
     [activateFace, resetAll, stepDial, toggleFocusMode],
   );
 
-  const updateAlarm = useCallback((id: string, patch: Partial<Alarm>) => {
-    setAlarms((current) =>
-      current.map((alarm) =>
-        alarm.id === id ? { ...alarm, ...patch } : alarm,
-      ),
-    );
-  }, []);
+  const updateAlarm = useCallback(
+    (id: string, patch: Partial<Alarm>) => {
+      updateAlarmStore(id, patch);
+    },
+    [updateAlarmStore],
+  );
+
+  useDocumentTitle(
+    remainingMs,
+    session.kind === "idle" ? null : mode,
+    session.kind !== "idle" && Boolean(session.paused),
+    session.kind === "idle",
+  );
 
   const topFace = getFaceById(topFaceId);
+
+  const dismissCelebration = useCallback(() => {
+    setCelebrationStartedAt(0);
+  }, []);
 
   return (
     <main className={`tk-app${isFocusMode ? " is-focus" : ""}`}>
@@ -1321,19 +1358,29 @@ export default function Home() {
       </p>
 
       <section className="tk-hero">
-        <span className="tk-eyebrow">Focube</span>
-        <h1>El cubo Pomodoro que se controla volteándolo.</h1>
-        <p>
-          Gira el dial y suelta: la cara que queda arriba define el modo y
-          arranca sola. La cara del reloj pausa la cuenta y volver a la misma
-          cara la reanuda.
-        </p>
+        <span className="tk-eyebrow">{copy.hero.eyebrow}</span>
+        <h1>{copy.hero.title}</h1>
+        <p>{copy.hero.subtitle}</p>
       </section>
+
+      {!hasSeenOnboarding ? (
+        <OnboardingOverlay
+          onStartTimer={() => {
+            markOnboardingSeen();
+            activateFace("pomodoro");
+          }}
+        />
+      ) : null}
+
+      <CelebrationOverlay
+        startedAt={celebrationStartedAt}
+        onDismiss={dismissCelebration}
+      />
 
       <section className="tk-layout">
         <div
           ref={sceneShellRef}
-          aria-label="Cubo Focube interactivo. Arrastra para voltearlo. Teclas 5, 1, 3, 6 para las caras numéricas, P para pomodoro y C para el reloj."
+          aria-label={copy.aria.cube}
           className={`tk-stage${dragging ? " is-dragging" : ""}${isFocusMode ? " is-fullscreen" : ""}`}
           role="group"
           tabIndex={0}
@@ -1424,39 +1471,37 @@ export default function Home() {
         >
           <div className="tk-hud">
             <div className="tk-chip">
-              <span>Arriba</span>
-              <strong>{topFace?.label ?? "—"}</strong>
+              <span>{copy.chips.arriba}</span>
+              <strong>{topFace?.label ?? copy.panel.faceUnknown}</strong>
             </div>
             <div className="tk-chip">
-              <span>Estado</span>
+              <span>{copy.chips.estado}</span>
               <strong>
                 {session.kind !== "idle" && session.paused
-                  ? "En pausa"
+                  ? copy.chips.enPausa
                   : mode === "clock"
-                    ? "Reloj"
+                    ? copy.chips.reloj
                     : mode === "pomodoro"
-                      ? "Pomodoro"
-                      : "Cuenta regresiva"}
+                      ? copy.chips.pomodoro
+                      : copy.chips.cuentaRegresiva}
               </strong>
             </div>
-            {/* Says what will happen before you commit — the drag used to be a
-                guess until you released. */}
             {dragging ? (
               <div className="tk-chip tk-chip--live">
-                <span>Soltar</span>
+                <span>{copy.chips.soltar}</span>
                 <strong>{describeFace(previewFaceId)}</strong>
               </div>
             ) : hoverFaceId && hoverFaceId !== topFaceId ? (
               <div className="tk-chip tk-chip--live">
-                <span>Clic</span>
+                <span>{copy.chips.clic}</span>
                 <strong>{describeFace(hoverFaceId)}</strong>
               </div>
             ) : null}
           </div>
 
           <div className="tk-legend">
-            Usa las <b>flechas</b> para girar el cubo — cada una dice a qué cara
-            va y qué hace · también <b>arrastra</b> o haz <b>clic</b> en una cara
+            Usá las <b>flechas</b> para girar el cubo — cada una dice a qué cara
+            va y qué hace · también <b>arrastralo</b> o hacé <b>clic</b> en una cara
           </div>
 
           <div className="tk-stage-tools">
@@ -1468,7 +1513,7 @@ export default function Home() {
                 type="button"
               >
                 <PictureInPicture2 size={16} />
-                Mini
+                {copy.controls.mini}
               </button>
             ) : null}
             <button
@@ -1478,15 +1523,15 @@ export default function Home() {
               type="button"
             >
               {isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-              {isFocusMode ? "Salir" : "Focus"}
+              {isFocusMode ? copy.controls.exit : copy.controls.focus}
             </button>
           </div>
 
           {isMiniPlayer ? (
             <div className="tk-pip-placeholder">
               <PictureInPicture2 size={26} />
-              <strong>Cubo en el mini reproductor</strong>
-              <span>Cierra la ventana flotante para traerlo de vuelta.</span>
+              <strong>{copy.states.pipPlaceholderTitle}</strong>
+              <span>{copy.states.pipPlaceholderDesc}</span>
             </div>
           ) : null}
 
@@ -1593,8 +1638,8 @@ export default function Home() {
             />
             {session.kind === "pomodoro" ? (
               <small>
-                Ciclo {session.cycle}/{POMODORO_TOTAL_CYCLES} ·{" "}
-                {session.phase === "work" ? "Trabajo" : "Descanso"}
+                {copy.panel.cycle(session.cycle, POMODORO_TOTAL_CYCLES)} ·{" "}
+                {session.phase === "work" ? copy.panel.work : copy.panel.break}
               </small>
             ) : (
               <small>
@@ -1604,7 +1649,7 @@ export default function Home() {
           </div>
 
           <div className="tk-card">
-            <h2>Voltear a una cara</h2>
+            <h2>{copy.panel.flipToFace}</h2>
             <div className="tk-faces">
               {MODE_FACES.map((face) => (
                 <button
@@ -1622,22 +1667,22 @@ export default function Home() {
                 onClick={() => activateFace("pomodoro")}
                 type="button"
               >
-                <strong>Pomodoro</strong>
-                <span>25 / 5 · 4 ciclos</span>
+                <strong>{copy.controls.pomodoro}</strong>
+                <span>{copy.panel.pomodoroAction}</span>
               </button>
               <button
                 className={`tk-face-button tk-face-button--wide${topFaceId === "screen" ? " is-active" : ""}`}
                 onClick={() => activateFace("screen")}
                 type="button"
               >
-                <strong>Reloj</strong>
-                <span>Pausa la cuenta</span>
+                <strong>{copy.panel.clock}</strong>
+                <span>{copy.panel.clockAction}</span>
               </button>
             </div>
           </div>
 
           <div className="tk-card">
-            <h2>Desde la cara del reloj</h2>
+            <h2>{copy.panel.fromClockFace}</h2>
             <div className="tk-tabs">
               {(["clock", "custom", "stopwatch", "alarms"] as ScreenTool[]).map(
                 (tool) => (
@@ -1648,62 +1693,58 @@ export default function Home() {
                     type="button"
                   >
                     {tool === "clock"
-                      ? "Reloj"
+                      ? copy.panel.clock
                       : tool === "custom"
-                        ? "Personalizado"
+                        ? copy.panel.custom
                         : tool === "stopwatch"
-                          ? "Cronómetro"
-                          : "Alarmas"}
+                          ? copy.panel.stopwatch
+                          : copy.panel.alarms}
                   </button>
                 ),
               )}
             </div>
 
             {screenTool === "clock" ? (
-              <p className="tk-hint">
-                La cara del reloj muestra hora, día y fecha, y pausa cualquier
-                conteo en curso.
-              </p>
+              <p className="tk-hint">{copy.panel.clockHint}</p>
             ) : null}
 
             {screenTool === "custom" ? (
               <div className="tk-tool">
                 <label htmlFor="custom-minutes">
-                  Cuenta regresiva personalizada ({CUSTOM_MIN_MINUTES}–
-                  {CUSTOM_MAX_MINUTES} min)
+                  {copy.panel.customRange(CUSTOM_MIN_MINUTES, CUSTOM_MAX_MINUTES)}
                 </label>
                 <input
                   id="custom-minutes"
                   max={CUSTOM_MAX_MINUTES}
                   min={CUSTOM_MIN_MINUTES}
                   onChange={(event) =>
-                    setCustomMinutes(
+                    setCustomMinutesStore(
                       clampCustomMinutes(Number(event.target.value)),
                     )
                   }
                   type="range"
-                  value={customMinutes}
+                  value={customMinutesStore}
                 />
                 <div className="tk-tool__row">
                   <SevenSegment
                     className="tk-tool__value"
-                    value={String(customMinutes).padStart(2, "0")}
+                    value={String(customMinutesStore).padStart(2, "0")}
                   />
                   <button
                     className="tk-button tk-button--primary"
-                    onClick={() => {
-                      startCountdownMinutes(
-                        customMinutes,
-                        `${customMinutes} min`,
-                        null,
-                      );
+                      onClick={() => {
+                        startCountdownMinutes(
+                          customMinutesStore,
+                          `${customMinutesStore} min`,
+                          null,
+                        );
                       setLiveMessage(
-                        `Cuenta regresiva personalizada de ${customMinutes} minutos.`,
+                        copy.timer.customStarted(customMinutesStore),
                       );
                     }}
                     type="button"
                   >
-                    Iniciar
+                    {copy.controls.start}
                   </button>
                 </div>
               </div>
@@ -1738,7 +1779,7 @@ export default function Home() {
                     }
                     type="button"
                   >
-                    {stopwatch.running ? "Pausar" : "Iniciar"}
+                    {stopwatch.running ? copy.controls.pause : copy.controls.start}
                   </button>
                   <button
                     className="tk-button"
@@ -1751,11 +1792,11 @@ export default function Home() {
                     }
                     type="button"
                   >
-                    Reiniciar
+                    {copy.controls.reset}
                   </button>
                 </div>
                 <p className="tk-hint">
-                  Cuenta hacia arriba hasta {STOPWATCH_MAX_MS / 60_000} minutos.
+                  {copy.panel.stopwatchHint(STOPWATCH_MAX_MS / 60_000)}
                 </p>
               </div>
             ) : null}
@@ -1765,7 +1806,7 @@ export default function Home() {
                 {alarms.map((alarm) => (
                   <div className="tk-alarm" key={alarm.id}>
                     <input
-                      aria-label={`Activar alarma ${alarm.id}`}
+                      aria-label={copy.aria.activateAlarm(alarm.id)}
                       checked={alarm.enabled}
                       onChange={(event) =>
                         updateAlarm(alarm.id, { enabled: event.target.checked })
@@ -1773,7 +1814,7 @@ export default function Home() {
                       type="checkbox"
                     />
                     <input
-                      aria-label={`Hora de la alarma ${alarm.id}`}
+                      aria-label={copy.aria.alarmTime(alarm.id)}
                       onChange={(event) => {
                         const [hour, minute] = event.target.value
                           .split(":")
@@ -1787,11 +1828,11 @@ export default function Home() {
                       value={`${String(alarm.hour).padStart(2, "0")}:${String(alarm.minute).padStart(2, "0")}`}
                     />
                     <button
-                      aria-label={`Eliminar alarma ${alarm.id}`}
+                      aria-label={copy.aria.deleteAlarm(alarm.id)}
                       className="tk-icon-button"
                       onClick={() =>
-                        setAlarms((list) =>
-                          list.filter((item) => item.id !== alarm.id),
+                        setAlarms(
+                          alarms.filter((item) => item.id !== alarm.id),
                         )
                       }
                       type="button"
@@ -1805,9 +1846,9 @@ export default function Home() {
                   className="tk-button"
                   disabled={alarms.length >= ALARM_LIMIT}
                   onClick={() =>
-                    setAlarms((list) =>
-                      appendAlarm(list, {
-                        id: `alarm-${Date.now()}-${list.length}`,
+                    setAlarms(
+                      appendAlarm(alarms, {
+                        id: `alarm-${Date.now()}-${alarms.length}`,
                         hour: 8,
                         minute: 0,
                         enabled: true,
@@ -1817,55 +1858,76 @@ export default function Home() {
                   type="button"
                 >
                   <Plus size={15} />
-                  Añadir alarma ({alarms.length}/{ALARM_LIMIT})
+                  {copy.controls.addAlarm(alarms.length, ALARM_LIMIT)}
                 </button>
               </div>
             ) : null}
           </div>
 
           <div className="tk-card">
-            <h2>Modo focus</h2>
+            <h2>{copy.panel.focusMode}</h2>
             <div className="tk-tabs">
               {SOUNDSCAPES.map((option) => (
-                <button
-                  key={option.id}
-                  className={`tk-tab${soundscape === option.id ? " is-active" : ""}`}
-                  onClick={() => {
-                    setSoundscape(option.id);
-                    armAudioContext();
-                  }}
-                  type="button"
-                >
-                  {option.id === "off" ? (
-                    <VolumeX size={15} />
-                  ) : option.id === "ticks" ? (
-                    <Timer size={15} />
-                  ) : (
-                    <Music size={15} />
-                  )}
-                  {option.label}
-                </button>
+                <div key={option.id} className="tk-tab-wrap">
+                  <button
+                    className={`tk-tab${soundscape === option.id ? " is-active" : ""}`}
+                    onClick={() => {
+                      setSoundscape(option.id as SoundscapeId);
+                      armAudioContext();
+                    }}
+                    type="button"
+                  >
+                    {option.id === "off" ? (
+                      <VolumeX size={15} />
+                    ) : option.id === "ticks" ? (
+                      <Timer size={15} />
+                    ) : (
+                      <Music size={15} />
+                    )}
+                    {option.label}
+                  </button>
+                  {option.id !== "off" ? (
+                    <button
+                      className="tk-tab__preview"
+                      aria-label={`Escuchar ${option.label}`}
+                      onClick={() => {
+                        armAudioContext();
+                        const ctx = audioContextRef.current;
+                        if (!ctx) return;
+                        // Create a temporary preview soundscape
+                        const preview = new FocusSoundscape(ctx);
+                        preview.setMode(option.id as SoundscapeId);
+                        setTimeout(() => {
+                          preview.setMode("off");
+                          // Small delay to let the "off" fade take effect
+                          setTimeout(() => preview.dispose(), 300);
+                        }, 2500);
+                      }}
+                      type="button"
+                    >
+                      <Volume2 size={12} />
+                    </button>
+                  ) : null}
+                </div>
               ))}
             </div>
-            <p className="tk-hint">
-              Pantalla completa sólo con el cubo. El ambiente suena mientras Focus está activo.
-            </p>
+            <p className="tk-hint">{copy.states.focusHint}</p>
           </div>
 
           <div className="tk-card">
-            <h2>Tipo de alerta</h2>
+            <h2>{copy.panel.alertType}</h2>
             <div className="tk-tabs">
               {(
                 [
-                  { id: "sound", label: "Sonido", icon: <Volume2 size={15} /> },
+                  { id: "sound" as const, label: copy.panel.sound, icon: <Volume2 size={15} /> },
                   {
-                    id: "vibration",
-                    label: "Vibración",
+                    id: "vibration" as const,
+                    label: copy.panel.vibration,
                     icon: <Smartphone size={15} />,
                   },
                   {
-                    id: "silent",
-                    label: "Silencioso",
+                    id: "silent" as const,
+                    label: copy.panel.silent,
                     icon: <BellOff size={15} />,
                   },
                 ] as Array<{ id: AlertType; label: string; icon: JSX.Element }>
@@ -1874,7 +1936,7 @@ export default function Home() {
                   key={option.id}
                   className={`tk-tab${alertType === option.id ? " is-active" : ""}`}
                   onClick={() => {
-                    setAlertType(option.id);
+                    setAlertType(option.id as AlertType);
                     if (option.id === "sound") {
                       armAudioContext();
                     }
@@ -1886,17 +1948,53 @@ export default function Home() {
                 </button>
               ))}
             </div>
+            {alertType !== "silent" ? (
+              <button
+                className="tk-button tk-button--small"
+                onClick={() => {
+                  armAudioContext();
+                  const context = audioContextRef.current;
+                  if (!context) return;
+                  const startAt = context.currentTime;
+                  [0, 0.24, 0.48].forEach((offset, index) => {
+                    const osc = context.createOscillator();
+                    const gain = context.createGain();
+                    osc.type = index === 1 ? "square" : "sine";
+                    osc.frequency.setValueAtTime(
+                      880 - index * 130,
+                      startAt + offset,
+                    );
+                    gain.gain.setValueAtTime(0.0001, startAt + offset);
+                    gain.gain.exponentialRampToValueAtTime(
+                      0.2,
+                      startAt + offset + 0.03,
+                    );
+                    gain.gain.exponentialRampToValueAtTime(
+                      0.0001,
+                      startAt + offset + 0.2,
+                    );
+                    osc.connect(gain);
+                    gain.connect(context.destination);
+                    osc.start(startAt + offset);
+                    osc.stop(startAt + offset + 0.26);
+                  });
+                }}
+                type="button"
+              >
+                {copy.controls.testAlert}
+              </button>
+            ) : null}
           </div>
 
           <div className="tk-card">
-            <h2>Acabado</h2>
+            <h2>{copy.panel.finish}</h2>
             <div className="tk-colors">
               {Object.entries(CUBE_PALETTES).map(([key, palette]) => (
                 <button
                   key={key}
                   aria-label={palette.name}
-                  className={`tk-swatch${cubeColor === key ? " is-active" : ""}`}
-                  onClick={() => setCubeColor(key as CubeColor)}
+                  className={`tk-swatch${cubeFinish === key ? " is-active" : ""}`}
+                  onClick={() => setCubeFinish(key as CubeFinish)}
                   style={{ background: palette.body }}
                   type="button"
                 />
@@ -1905,7 +2003,7 @@ export default function Home() {
             <div className="tk-tool__row">
               <button className="tk-button" onClick={resetAll} type="button">
                 <RotateCcw size={15} />
-                Reiniciar
+                {copy.controls.reset}
               </button>
               <button
                 className="tk-button"
@@ -1913,7 +2011,7 @@ export default function Home() {
                 type="button"
               >
                 <AlarmClock size={15} />
-                Pomodoro
+                {copy.controls.pomodoro}
               </button>
             </div>
           </div>
