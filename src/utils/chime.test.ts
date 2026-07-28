@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CHIME_DELAY_TAIL_REPEATS,
+  CHIME_DELAY_TIME,
   CHIME_VOICES,
   chimeDurationSeconds,
   chimePeakGain,
@@ -51,7 +53,7 @@ describe("chime.ts — derived quantities (assertable without playing sound)", (
   it("chimeDurationSeconds() derives from offsets/attack/decay and stays <= 1.5s", () => {
     const expected =
       Math.max(...CHIME_VOICES.map((v) => v.offset + v.attack + v.decay)) +
-      0.22 * 2;
+      CHIME_DELAY_TIME * CHIME_DELAY_TAIL_REPEATS;
     expect(chimeDurationSeconds()).toBeCloseTo(expected, 5);
     expect(chimeDurationSeconds()).toBeLessThanOrEqual(1.5);
   });
