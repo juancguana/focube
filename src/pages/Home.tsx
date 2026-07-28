@@ -91,7 +91,7 @@ import {
   useNotifications,
 } from "@/hooks/useNotifications";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import { trackEvent } from "@/analytics";
+import { trackEvent } from "@/signals";
 import {
   appOpened,
   daysSinceFirstVisit,
@@ -102,7 +102,7 @@ import {
   sessionStarted,
   shareClicked,
   type SessionSource,
-} from "@/analytics/events";
+} from "@/signals/events";
 
 type QuaternionTuple = [number, number, number, number];
 

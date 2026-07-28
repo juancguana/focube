@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import './index.css'
-import { initAnalytics } from './analytics'
+import { initAnalytics } from './signals'
 
 // Total no-op without VITE_POSTHOG_KEY (see src/analytics/index.ts).
 initAnalytics()

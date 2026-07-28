@@ -10,7 +10,12 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Covers .env.local — the recommended file for local secrets.
 *.local
+# .env is not covered by *.local and is the name people write by habit.
+.env
+.env.*
+!.env.example
 
 # Agent tooling (not part of the product)
 .atl

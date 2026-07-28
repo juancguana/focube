@@ -1,3 +1,22 @@
+/**
+ * Product signals — the entry point for the analytics seam.
+ *
+ * ## Why this directory is not called `analytics/`
+ *
+ * Content blockers match `/analytics/` in a request path. In dev, Vite serves
+ * every module as its own URL, so `src/analytics/events.ts` was blocked with
+ * `ERR_BLOCKED_BY_CLIENT` — and because `events.ts` is a static import of
+ * `Home.tsx`, the whole app failed to boot. The modules in here hold pure
+ * logic and open no connections, so blocking them buys the user no privacy
+ * and only breaks the page. Hence the rename.
+ *
+ * `posthogSink.ts` deliberately KEEPS its name. It is the only file that
+ * actually talks to the network, so a blocker SHOULD be able to stop it —
+ * that is the user's choice working as intended, and the seam already treats
+ * a blocked sink as terminal-disabled without breaking anything. Do not
+ * rename it to slip past a filter list.
+ */
+
 import { configureAnalytics, type SinkLoader } from "./track";
 
 const DEFAULT_HOST = "https://us.i.posthog.com";
