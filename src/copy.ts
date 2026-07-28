@@ -16,6 +16,7 @@
  * - `aria` — screen-reader-only labels
  * - `notifications` — browser notification bodies (short, no context)
  * - `title` — document title fragments
+ * - `links` — outbound URLs
  */
 
 export const copy = {
@@ -111,6 +112,11 @@ export const copy = {
     sessionsToday: (count: number) =>
       count === 1 ? "1 sesión hoy" : `${count} sesiones hoy`,
     streakDays: (days: number) => `${days} días seguidos`,
+    streakDismiss: "Ocultar por hoy",
+  },
+
+  links: {
+    feedback: "https://github.com/juancguana/focube/issues",
   },
 
   chips: {

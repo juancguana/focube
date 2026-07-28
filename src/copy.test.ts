@@ -41,6 +41,13 @@ describe("copy.ts — string centralization", () => {
   });
 });
 
+describe("copy.ts — canal de feedback público", () => {
+  it("links.feedback apunta a GitHub Issues, sin mailto", () => {
+    expect(copy.links.feedback).toMatch(/^https:\/\//);
+    expect(copy.links.feedback).not.toContain("mailto:");
+  });
+});
+
 describe("copy.ts — registro neutro latinoamericano", () => {
   /**
    * Voseo markers: imperatives and present forms stressed on the last

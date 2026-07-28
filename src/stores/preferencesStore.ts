@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { todayKey } from "@/utils/dates";
 
 export type CubeFinish = "black" | "white" | "blue" | "lavender";
 export type AlertType = "sound" | "vibration" | "silent";
@@ -50,6 +51,12 @@ export interface PreferencesState {
   streakDays: number;
   lastStreakDate: string; // YYYY-MM-DD
 
+  // First-ever visit (P... feedback/streak dismissal) — "" sentinel for
+  // "not yet persisted". Never undefined: merge() relies on that.
+  firstVisitDate: string;
+  // Per-day streak dismissal — null means "never dismissed".
+  streakHiddenDate: string | null;
+
   // Actions
   setCubeFinish: (finish: CubeFinish) => void;
   setAlertType: (type: AlertType) => void;
@@ -62,12 +69,22 @@ export interface PreferencesState {
   togglePanelSectionCollapsed: (section: keyof PanelSectionsCollapsed) => void;
   setPanelSectionsCollapsed: (state: PanelSectionsCollapsed) => void;
   incrementDailySession: () => void;
+  markFirstVisit: (today?: string) => void;
+  hideStreakForToday: (today?: string) => void;
   resetStore: () => void;
 }
 
-function getTodayKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/**
+ * Single source of truth for the streak-visibility rule: visible only when
+ * there is at least one session today AND today hasn't been dismissed.
+ */
+export function isStreakVisible(
+  dailySessions: number,
+  streakHiddenDate: string | null,
+  today: string,
+): boolean {
+  if (dailySessions === 0) return false;
+  return streakHiddenDate !== today;
 }
 
 const defaultAlarms: AlarmConfig[] = [
@@ -95,9 +112,11 @@ export const initialPreferences = {
   notificationsEnabled: false,
   panelSectionsCollapsed: defaultSectionsCollapsed,
   dailySessions: 0,
-  dailySessionsDate: getTodayKey(),
+  dailySessionsDate: todayKey(),
   streakDays: 0,
   lastStreakDate: "",
+  firstVisitDate: "",
+  streakHiddenDate: null,
 };
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -140,7 +159,7 @@ export const usePreferencesStore = create<PreferencesState>()(
         set({ panelSectionsCollapsed: state }),
 
       incrementDailySession: () => {
-        const today = getTodayKey();
+        const today = todayKey();
         const state = get();
 
         if (state.dailySessionsDate !== today) {
@@ -167,6 +186,16 @@ export const usePreferencesStore = create<PreferencesState>()(
         }
       },
 
+      // Guarded write-once, mirroring markOnboardingSeen: the first call
+      // wins, later calls (even on a later day) must not overwrite it.
+      markFirstVisit: (today = todayKey()) => {
+        if (get().firstVisitDate) return;
+        set({ firstVisitDate: today });
+      },
+
+      hideStreakForToday: (today = todayKey()) =>
+        set({ streakHiddenDate: today }),
+
       resetStore: () =>
         set({
           ...initialPreferences,
@@ -188,6 +217,8 @@ export const usePreferencesStore = create<PreferencesState>()(
         dailySessionsDate: state.dailySessionsDate,
         streakDays: state.streakDays,
         lastStreakDate: state.lastStreakDate,
+        firstVisitDate: state.firstVisitDate,
+        streakHiddenDate: state.streakHiddenDate,
       }),
       // Sections are a nested object: a shallow merge would drop keys added
       // after a visitor's preferences were already stored.

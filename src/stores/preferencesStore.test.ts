@@ -1,5 +1,9 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { initialPreferences, usePreferencesStore } from "./preferencesStore";
+import {
+  initialPreferences,
+  isStreakVisible,
+  usePreferencesStore,
+} from "./preferencesStore";
 
 describe("preferencesStore", () => {
   beforeEach(() => {
@@ -96,5 +100,69 @@ describe("preferencesStore", () => {
     expect(usePreferencesStore.getState().dailySessions).toBe(2);
     // Same day must not inflate the streak.
     expect(usePreferencesStore.getState().streakDays).toBe(1);
+  });
+
+  it("arranca con firstVisitDate y streakHiddenDate en sus valores por defecto", () => {
+    const state = usePreferencesStore.getState();
+    expect(state.firstVisitDate).toBe("");
+    expect(state.streakHiddenDate).toBeNull();
+  });
+
+  it("markFirstVisit escribe una sola vez", () => {
+    usePreferencesStore.getState().markFirstVisit("2026-07-27");
+    expect(usePreferencesStore.getState().firstVisitDate).toBe("2026-07-27");
+
+    // A second call on a later day must not overwrite the first visit.
+    usePreferencesStore.getState().markFirstVisit("2026-07-28");
+    expect(usePreferencesStore.getState().firstVisitDate).toBe("2026-07-27");
+  });
+
+  it("hideStreakForToday guarda la fecha de hoy", () => {
+    expect(usePreferencesStore.getState().streakHiddenDate).toBeNull();
+    usePreferencesStore.getState().hideStreakForToday("2026-07-27");
+    expect(usePreferencesStore.getState().streakHiddenDate).toBe("2026-07-27");
+  });
+
+  describe("isStreakVisible", () => {
+    it("se oculta el mismo día en que se descarta", () => {
+      expect(isStreakVisible(1, "2026-07-27", "2026-07-27")).toBe(false);
+    });
+
+    it("vuelve a mostrarse al día siguiente", () => {
+      expect(isStreakVisible(1, "2026-07-27", "2026-07-28")).toBe(true);
+    });
+
+    it("se muestra si nunca se descartó", () => {
+      expect(isStreakVisible(1, null, "2026-07-27")).toBe(true);
+    });
+
+    it("se oculta cuando no hay sesiones hoy, sin importar el descarte", () => {
+      expect(isStreakVisible(0, null, "2026-07-27")).toBe(false);
+    });
+  });
+
+  it("los campos nuevos sobreviven a un payload persistido que no los tiene, sin romper el deep-merge de panelSectionsCollapsed", () => {
+    const legacyPersisted = {
+      cubeFinish: "blue",
+      panelSectionsCollapsed: { finish: false },
+      // firstVisitDate / streakHiddenDate intentionally absent — pre-change payload.
+    };
+
+    const merged = usePreferencesStore.persist.getOptions().merge!(
+      legacyPersisted,
+      usePreferencesStore.getState(),
+    ) as ReturnType<typeof usePreferencesStore.getState>;
+
+    expect(merged.firstVisitDate).toBe("");
+    expect(merged.streakHiddenDate).toBeNull();
+    expect(merged.firstVisitDate).not.toBeUndefined();
+    expect(merged.streakHiddenDate).not.toBeUndefined();
+    // The custom deep-merge for panelSectionsCollapsed must still hold.
+    expect(merged.panelSectionsCollapsed).toEqual({
+      screenTools: true,
+      focusMode: true,
+      alertType: true,
+      finish: false,
+    });
   });
 });

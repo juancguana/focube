@@ -513,6 +513,21 @@ input:focus-visible,
   color: #2d9cdb;
 }
 
+.tk-streak__dismiss {
+  margin-left: auto;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.78rem;
+  color: rgba(20, 23, 29, 0.45);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tk-streak__dismiss:hover {
+  color: rgba(20, 23, 29, 0.7);
+}
+
 .tk-teaser {
   font-size: 0.75rem;
   color: rgba(20, 23, 29, 0.45);

@@ -76,10 +76,12 @@ import {
   tipForFace,
 } from "@/utils/cube";
 import {
+  isStreakVisible,
   usePreferencesStore,
   type AlertType,
   type CubeFinish,
 } from "@/stores/preferencesStore";
+import { todayKey } from "@/utils/dates";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useUrlState } from "@/hooks/useUrlState";
 import {
@@ -744,6 +746,11 @@ export default function Home() {
   );
   const dailySessions = usePreferencesStore((s) => s.dailySessions);
   const streakDays = usePreferencesStore((s) => s.streakDays);
+  const streakHiddenDate = usePreferencesStore((s) => s.streakHiddenDate);
+  const hideStreakForToday = usePreferencesStore(
+    (s) => s.hideStreakForToday,
+  );
+  const markFirstVisit = usePreferencesStore((s) => s.markFirstVisit);
   const notificationsEnabled = usePreferencesStore(
     (s) => s.notificationsEnabled,
   );
@@ -1109,6 +1116,11 @@ export default function Home() {
   );
 
   // -- ticking --------------------------------------------------------------
+
+  // Write-once first-visit marker, feeds days_since_first_visit later.
+  useEffect(() => {
+    markFirstVisit();
+  }, [markFirstVisit]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 200);
@@ -1850,8 +1862,9 @@ export default function Home() {
               </small>
             )}
 
-            {/* Daily focus counter (P2.1) — visible without opening anything. */}
-            {dailySessions > 0 ? (
+            {/* Daily focus counter (P2.1) — visible without opening anything,
+                dismissible for the rest of the day. */}
+            {isStreakVisible(dailySessions, streakHiddenDate, todayKey()) ? (
               <div className="tk-streak">
                 <span>{copy.panel.sessionsToday(dailySessions)}</span>
                 {streakDays > 1 ? (
@@ -1859,6 +1872,13 @@ export default function Home() {
                     · {copy.panel.streakDays(streakDays)}
                   </span>
                 ) : null}
+                <button
+                  className="tk-streak__dismiss"
+                  onClick={() => hideStreakForToday()}
+                  type="button"
+                >
+                  {copy.panel.streakDismiss}
+                </button>
               </div>
             ) : null}
           </div>
@@ -2271,7 +2291,7 @@ export default function Home() {
                 <div className="tk-tool__row">
                   <a
                     className="tk-button tk-button--small"
-                    href="mailto:feedback@focube.app"
+                    href={copy.links.feedback}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
