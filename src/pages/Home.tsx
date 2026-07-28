@@ -36,6 +36,7 @@ import { CelebrationOverlay } from "@/components/CelebrationOverlay";
 import { copy } from "@/copy";
 import { createLedScreenTexture } from "@/utils/ledScreen";
 import { drawSevenSegmentText, measureText } from "@/utils/sevenSegment";
+import { playChime } from "@/utils/chime";
 import {
   FocusSoundscape,
   SOUNDSCAPES,
@@ -604,31 +605,6 @@ function FocubeCube({
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
-
-/**
- * Three-note chime that closes a session. Shared by the real alert and the
- * "Probar alarma" preview so what you hear is exactly what will ring.
- */
-function playChime(context: AudioContext) {
-  const startAt = context.currentTime;
-
-  [0, 0.24, 0.48].forEach((offset, index) => {
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-
-    oscillator.type = index === 1 ? "square" : "sine";
-    oscillator.frequency.setValueAtTime(880 - index * 130, startAt + offset);
-
-    gain.gain.setValueAtTime(0.0001, startAt + offset);
-    gain.gain.exponentialRampToValueAtTime(0.2, startAt + offset + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + offset + 0.2);
-
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(startAt + offset);
-    oscillator.stop(startAt + offset + 0.26);
-  });
-}
 
 const VIBRATION_PATTERN = [220, 120, 220, 120, 320];
 

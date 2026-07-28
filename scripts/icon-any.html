@@ -1,0 +1,53 @@
+<!doctype html>
+<!--
+  Source for the `purpose: "any"` PWA icons.
+
+  Generation (build-time only, no user input, fixed local path):
+    Render with headless Chrome at an exact square viewport and screenshot to
+    the matching file:
+      192x192 -> public/icon-192.png
+      512x512 -> public/icon-512.png
+
+  The layout is viewport-relative, so one source renders every size. The glyph
+  goes edge to edge: an "any" icon is drawn as-authored, with no safe-zone
+  padding — that is what the separate maskable source is for.
+
+  The opaque background rect IS kept here (unlike scripts/og-card.html): a
+  launcher icon needs its own background, it is not composited over the page.
+-->
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Focube — icon source (any)</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background: #0a0b0d;
+      }
+
+      svg {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="32" height="32" fill="#0A0B0D" />
+      <path
+        d="M26.6677 23.7149H8.38057V20.6496H5.33301V8.38159H26.6677V23.7149ZM8.38057 20.6496H23.6201V11.4482H8.38057V20.6496ZM16.0011 16.0021L13.8461 18.1705L11.6913 16.0021L13.8461 13.8337L16.0011 16.0021ZM22.0963 16.0008L19.9414 18.1691L17.7865 16.0008L19.9414 13.8324L22.0963 16.0008Z"
+        fill="#32F08C"
+      />
+    </svg>
+  </body>
+</html>

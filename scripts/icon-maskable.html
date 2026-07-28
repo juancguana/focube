@@ -1,0 +1,68 @@
+<!doctype html>
+<!--
+  Source for the `purpose: "maskable"` PWA icon.
+
+  Generation (build-time only, no user input, fixed local path):
+    Render with headless Chrome at an exact 512x512 viewport and screenshot to
+    public/icon-maskable-512.png
+
+  Why this is a SEPARATE file from scripts/icon-any.html: the manifest used to
+  declare one icon as "any maskable". A maskable icon is cropped by the
+  launcher to whatever shape the platform wants (circle, squircle, rounded
+  square), so an edge-to-edge glyph gets its corners eaten. Declaring one
+  asset as both purposes means it is wrong for one of them.
+
+  Safe zone: the spec guarantees only the circle of radius 40% of the canvas
+  (204.8px on 512) is always visible. The glyph is scaled to 80% (409.6px)
+  and centered, which puts its farthest painted corner at ~168.7px from the
+  center — comfortably inside 204.8px. The background fills the full canvas so
+  no crop can ever expose a transparent edge.
+-->
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Focube — icon source (maskable)</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        /* Fills the whole canvas: the crop must never hit a transparent edge. */
+        background: #0a0b0d;
+      }
+
+      .safe {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      svg {
+        display: block;
+        width: 80vw;
+        height: 80vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="safe">
+      <!-- The background rect is omitted here: body already paints it, and a
+           second opaque rect inset by 10% would draw a visible seam. -->
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          d="M26.6677 23.7149H8.38057V20.6496H5.33301V8.38159H26.6677V23.7149ZM8.38057 20.6496H23.6201V11.4482H8.38057V20.6496ZM16.0011 16.0021L13.8461 18.1705L11.6913 16.0021L13.8461 13.8337L16.0011 16.0021ZM22.0963 16.0008L19.9414 18.1691L17.7865 16.0008L19.9414 13.8324L22.0963 16.0008Z"
+          fill="#32F08C"
+        />
+      </svg>
+    </div>
+  </body>
+</html>
