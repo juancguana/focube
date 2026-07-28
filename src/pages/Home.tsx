@@ -90,6 +90,18 @@ import {
   useNotifications,
 } from "@/hooks/useNotifications";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { trackEvent } from "@/analytics";
+import {
+  appOpened,
+  daysSinceFirstVisit,
+  onboardingDismissed,
+  pwaInstalled,
+  sessionAbandoned,
+  sessionCompleted,
+  sessionStarted,
+  shareClicked,
+  type SessionSource,
+} from "@/analytics/events";
 
 type QuaternionTuple = [number, number, number, number];
 
@@ -620,6 +632,37 @@ function playChime(context: AudioContext) {
 
 const VIBRATION_PATTERN = [220, 120, 220, 120, 320];
 
+/** Minutes a session was set for, for analytics. */
+function sessionMinutes(session: Exclude<Session, { kind: "idle" }>) {
+  return Math.round(session.durationMs / 60_000);
+}
+
+/**
+ * Builds the `session_abandoned` event for a session being discarded before
+ * it reached zero, or `null` when there is nothing to report.
+ *
+ * Completion rate needs a denominator: without this, we would know how many
+ * sessions finished but not how many were started and walked away from.
+ */
+function abandonmentOf(session: Session, now: number) {
+  if (session.kind === "idle") return null;
+
+  const remainingMs = session.paused
+    ? (session.remainingMs ?? 0)
+    : Math.max(0, session.endsAt - now);
+
+  // Already at zero: that is a completion, and it reports itself.
+  if (remainingMs <= 0 || session.durationMs <= 0) return null;
+
+  const elapsed = session.durationMs - remainingMs;
+
+  return sessionAbandoned({
+    mode: session.kind === "pomodoro" ? "pomodoro" : "countdown",
+    minutes: sessionMinutes(session),
+    elapsedRatio: Number((elapsed / session.durationMs).toFixed(3)),
+  });
+}
+
 /** What landing on a face will actually do, phrased as an outcome. */
 function describeFace(faceId: FaceId) {
   if (faceId === "screen") {
@@ -818,6 +861,11 @@ export default function Home() {
   const soundscapeRef = useRef<FocusSoundscape | null>(null);
   const firedAlarmRef = useRef<string | null>(null);
   const completionRef = useRef<number | null>(null);
+  /**
+   * Sessions started in this visit. PostHog's memory persistence makes one
+   * page load exactly one visit, so this counter IS the sessions/visit metric.
+   */
+  const sessionIndexRef = useRef(0);
   const previewRef = useRef<FocusSoundscape | null>(null);
   const previewTimersRef = useRef<number[]>([]);
 
@@ -950,12 +998,29 @@ export default function Home() {
     (minutes: number, label: string, faceId: FaceId | null) => {
       const durationMs = minutes * 60 * 1000;
       completionRef.current = null;
-      setSession({
-        kind: "countdown",
-        durationMs,
-        endsAt: Date.now() + durationMs,
-        label,
-        faceId,
+
+      setSession((current) => {
+        const abandoned = abandonmentOf(current, Date.now());
+        if (abandoned) trackEvent(abandoned);
+
+        sessionIndexRef.current += 1;
+        trackEvent(
+          sessionStarted({
+            mode: "custom",
+            minutes,
+            msSinceLoad: Math.round(performance.now()),
+            sessionIndexInVisit: sessionIndexRef.current,
+            source: "panel",
+          }),
+        );
+
+        return {
+          kind: "countdown",
+          durationMs,
+          endsAt: Date.now() + durationMs,
+          label,
+          faceId,
+        };
       });
     },
     [],
@@ -1004,9 +1069,17 @@ export default function Home() {
    * resumes, matching the physical cube.
    */
   const activateFace = useCallback(
-    (faceId: FaceId) => {
+    (faceId: FaceId, source: SessionSource = "cube") => {
       armAudioContext();
       // Any first move — arrow, drag, click or key — retires the hint.
+      if (!usePreferencesStore.getState().hasSeenOnboarding) {
+        trackEvent(
+          onboardingDismissed({
+            msSinceLoad: Math.round(performance.now()),
+            dismissedVia: source === "cta" ? "cta" : "gesture",
+          }),
+        );
+      }
       markOnboardingSeen();
       // Any gesture also retires a `?mode=pomodoro` deep-link suggestion.
       setPomodoroSuggested(false);
@@ -1033,6 +1106,23 @@ export default function Home() {
             totalCycles: POMODORO_TOTAL_CYCLES,
           });
           completionRef.current = null;
+
+          const abandoned = abandonmentOf(current, Date.now());
+          if (abandoned) trackEvent(abandoned);
+
+          if (step) {
+            sessionIndexRef.current += 1;
+            trackEvent(
+              sessionStarted({
+                mode: "pomodoro",
+                minutes: Math.round(step.durationMs / 60_000),
+                msSinceLoad: Math.round(performance.now()),
+                sessionIndexInVisit: sessionIndexRef.current,
+                source,
+              }),
+            );
+          }
+
           return step
             ? {
                 kind: "pomodoro" as const,
@@ -1087,6 +1177,21 @@ export default function Home() {
 
         setLiveMessage(copy.timer.started(face.minutes ?? 0));
         completionRef.current = null;
+
+        const abandoned = abandonmentOf(current, Date.now());
+        if (abandoned) trackEvent(abandoned);
+
+        sessionIndexRef.current += 1;
+        trackEvent(
+          sessionStarted({
+            mode: "countdown",
+            minutes: face.minutes ?? 0,
+            msSinceLoad: Math.round(performance.now()),
+            sessionIndexInVisit: sessionIndexRef.current,
+            source,
+          }),
+        );
+
         return {
           kind: "countdown" as const,
           durationMs: (face.minutes ?? 0) * 60 * 1000,
@@ -1131,10 +1236,37 @@ export default function Home() {
 
   // -- ticking --------------------------------------------------------------
 
-  // Write-once first-visit marker, feeds days_since_first_visit later.
+  /**
+   * Write-once first-visit marker plus the one `app_opened` event per visit.
+   *
+   * Both live in the same effect because the event needs to know whether this
+   * was a first visit, which is only knowable BEFORE the marker is written.
+   * PostHog runs cookieless (`persistence: "memory"`), so it cannot compute
+   * D7 return itself — `days_since_first_visit` is the first-party substitute.
+   */
   useEffect(() => {
+    const firstVisitDate = usePreferencesStore.getState().firstVisitDate;
+    const isFirstVisit = firstVisitDate === "";
+
     markFirstVisit();
+
+    trackEvent(
+      appOpened({
+        isFirstVisit,
+        daysSinceFirstVisit: daysSinceFirstVisit(firstVisitDate, todayKey()),
+        hasSharedSetup: window.location.search.length > 1,
+        isStandalone:
+          window.matchMedia?.("(display-mode: standalone)").matches ?? false,
+      }),
+    );
   }, [markFirstVisit]);
+
+  /** Installing the app is the strongest retention signal available here. */
+  useEffect(() => {
+    const onInstalled = () => trackEvent(pwaInstalled());
+    window.addEventListener("appinstalled", onInstalled);
+    return () => window.removeEventListener("appinstalled", onInstalled);
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 200);
@@ -1154,6 +1286,18 @@ export default function Home() {
     completionRef.current = session.endsAt;
     const at = Date.now();
 
+    /** Every path below reaches zero, so every path is a completion. */
+    const reportCompleted = (mode: string) =>
+      trackEvent(
+        sessionCompleted({
+          mode,
+          minutes: sessionMinutes(session),
+          soundscape,
+          alertType,
+          wasHidden: document.hidden,
+        }),
+      );
+
     if (session.kind === "pomodoro") {
       const step = getNextPomodoroStep({
         enabled: true,
@@ -1169,6 +1313,7 @@ export default function Home() {
           notification: copy.notifications.pomodoroDone,
         });
         fireAlert(copy.timer.pomodoroDone);
+        reportCompleted("pomodoro");
         incrementDailySession();
         setSession({ kind: "idle" });
         moveToFace("screen");
@@ -1194,6 +1339,7 @@ export default function Home() {
       );
       if (isBreak) {
         // Only completed work blocks count as focus sessions.
+        reportCompleted("pomodoro_block");
         incrementDailySession();
       }
       setSession({
@@ -1212,11 +1358,20 @@ export default function Home() {
       notification: copy.notifications.countdownDone,
     });
     fireAlert(copy.timer.countdownDone);
+    reportCompleted("countdown");
     incrementDailySession();
     setSession({ kind: "idle" });
 
     window.setTimeout(() => moveToFace("screen"), 2600);
-  }, [fireAlert, incrementDailySession, moveToFace, remainingMs, session]);
+  }, [
+    alertType,
+    fireAlert,
+    incrementDailySession,
+    moveToFace,
+    remainingMs,
+    session,
+    soundscape,
+  ]);
 
   /** Daily alarms ring regardless of the face that is currently up. */
   useEffect(() => {
@@ -1422,7 +1577,11 @@ export default function Home() {
   }, [armAudioContext, closeMiniPlayer]);
 
   const resetAll = useCallback(() => {
-    setSession({ kind: "idle" });
+    setSession((current) => {
+      const abandoned = abandonmentOf(current, Date.now());
+      if (abandoned) trackEvent(abandoned);
+      return { kind: "idle" };
+    });
     setAlertUntil(0);
     setStopwatch({ running: false, startedAt: 0, accumulatedMs: 0 });
     activateFace("screen");
@@ -1443,7 +1602,7 @@ export default function Home() {
 
       if (byKey[key]) {
         event.preventDefault();
-        activateFace(byKey[key]);
+        activateFace(byKey[key], "keyboard");
         return;
       }
 
@@ -1544,10 +1703,26 @@ export default function Home() {
       setShareCopied(true);
       setLiveMessage(copy.controls.shareMessage);
       window.setTimeout(() => setShareCopied(false), 2200);
+
+      // Only a successful copy counts: a denied clipboard shared nothing.
+      trackEvent(
+        shareClicked({
+          mode: currentMode ?? "clock",
+          minutes: customMinutesStore,
+          finish: cubeFinish,
+          soundscape,
+        }),
+      );
     } catch {
       // Clipboard denied: the URL bar already carries the same setup.
     }
-  }, [getShareableUrl]);
+  }, [
+    cubeFinish,
+    currentMode,
+    customMinutesStore,
+    getShareableUrl,
+    soundscape,
+  ]);
 
   // Sound previews are transient objects; leaving the page must not strand one
   // playing in the audio graph.
@@ -1610,8 +1785,9 @@ export default function Home() {
       {!hasSeenOnboarding ? (
         <OnboardingOverlay
           onStartTimer={() => {
-            markOnboardingSeen();
-            activateFace("pomodoro");
+            // activateFace retires the hint itself — calling markOnboardingSeen
+            // first would hide that this dismissal came from the CTA.
+            activateFace("pomodoro", "cta");
           }}
         />
       ) : null}
@@ -1924,7 +2100,7 @@ export default function Home() {
                 <button
                   key={face.id}
                   className={`tk-face-button${topFaceId === face.id ? " is-active" : ""}`}
-                  onClick={() => activateFace(face.id)}
+                  onClick={() => activateFace(face.id, "panel")}
                   type="button"
                 >
                   <strong>{face.minutes}</strong>
@@ -1933,7 +2109,7 @@ export default function Home() {
               ))}
               <button
                 className={`tk-face-button tk-face-button--wide${topFaceId === "pomodoro" ? " is-active" : ""}`}
-                onClick={() => activateFace("pomodoro")}
+                onClick={() => activateFace("pomodoro", "panel")}
                 type="button"
               >
                 <strong>{copy.controls.pomodoro}</strong>
@@ -1941,7 +2117,7 @@ export default function Home() {
               </button>
               <button
                 className={`tk-face-button tk-face-button--wide${topFaceId === "screen" ? " is-active" : ""}`}
-                onClick={() => activateFace("screen")}
+                onClick={() => activateFace("screen", "panel")}
                 type="button"
               >
                 <strong>{copy.panel.clock}</strong>
@@ -2313,7 +2489,7 @@ export default function Home() {
                   </button>
                   <button
                     className={`tk-button${pomodoroSuggested ? " is-suggested" : ""}`}
-                    onClick={() => activateFace("pomodoro")}
+                    onClick={() => activateFace("pomodoro", "panel")}
                     type="button"
                   >
                     <AlarmClock size={15} />
