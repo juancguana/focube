@@ -95,6 +95,7 @@ import {
   useNotifications,
 } from "@/hooks/useNotifications";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useWakeLock } from "@/hooks/useWakeLock";
 import { trackEvent } from "@/signals";
 import {
   appOpened,
@@ -1448,6 +1449,9 @@ export default function Home() {
 
   // Both focus mode and the mini player are "focus"; the ambience follows them.
   const focusActive = isFocusMode || isMiniPlayer;
+  // Focus is the one mode meant to be watched rather than touched, so the
+  // screen has to be told not to sleep through it.
+  useWakeLock(focusActive);
   /**
    * The render loop only runs free while something is actually moving: a drag,
    * the alarm pulse or a cube still settling. At rest — and during a running
