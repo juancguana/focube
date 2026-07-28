@@ -143,4 +143,26 @@ describe("copy.ts — interpolación", () => {
     expect(msg).toContain("24:59");
     expect(msg).toContain("Trabajo");
   });
+
+  it("panel.pomodoroAction refleja el bloque elegido", () => {
+    expect(copy.panel.pomodoroAction(25)).toContain("25");
+    expect(copy.panel.pomodoroAction(100)).toContain("100");
+  });
+
+  it("panel.pomodoroBlockOption nombra el multiplicador y los minutos", () => {
+    const msg = copy.panel.pomodoroBlockOption(2, 50);
+    expect(msg).toContain("2");
+    expect(msg).toContain("50");
+  });
+
+  // The promise the setting makes: the break never grows with the block.
+  it("panel.pomodoroBlockHint aclara que el descanso no cambia", () => {
+    expect(copy.panel.pomodoroBlockHint.toLowerCase()).toContain("descanso");
+  });
+
+  it("aria.pomodoroBlock describe la opción para lectores de pantalla", () => {
+    const msg = copy.aria.pomodoroBlock(3, 75);
+    expect(msg).toContain("3");
+    expect(msg).toContain("75");
+  });
 });

@@ -48,6 +48,7 @@ import {
   CUSTOM_MAX_MINUTES,
   CUSTOM_MIN_MINUTES,
   FACE_CONFIGS,
+  POMODORO_MULTIPLIERS,
   POMODORO_TOTAL_CYCLES,
   QUARTER_TURN,
   STOPWATCH_MAX_MS,
@@ -74,6 +75,7 @@ import {
   getNextPomodoroStep,
   nearestTip,
   orientationQuaternion,
+  pomodoroWorkMinutes,
   snapDialStep,
   tipForFace,
 } from "@/utils/cube";
@@ -713,13 +715,13 @@ function faceName(faceId: FaceId) {
 }
 
 /** Short outcome line for a control, without repeating the face name. */
-function faceActionLabel(faceId: FaceId) {
+function faceActionLabel(faceId: FaceId, pomodoroWorkMinutes: number) {
   if (faceId === "screen") {
     return copy.panel.pauseAction;
   }
 
   if (faceId === "pomodoro") {
-    return copy.panel.pomodoroAction;
+    return copy.panel.pomodoroAction(pomodoroWorkMinutes);
   }
 
   return `${getFaceById(faceId)?.minutes} min`;
@@ -740,12 +742,15 @@ function CubeControls({
   directions,
   topFaceId,
   onActivate,
+  pomodoroWorkMinutes,
   compact = false,
   highlight = false,
 }: {
   directions: Direction[];
   topFaceId: FaceId;
   onActivate: (faceId: FaceId) => void;
+  /** Length of one work block, so the Pomodoro arrow can advertise it. */
+  pomodoroWorkMinutes: number;
   compact?: boolean;
   /** First visit: the arrows pulse so the one gesture that matters is obvious. */
   highlight?: boolean;
@@ -770,7 +775,9 @@ function CubeControls({
           >
             <span className="tk-dpad__arrow">{direction.icon}</span>
             <span className="tk-dpad__face">{faceName(direction.target)}</span>
-            <small className="tk-dpad__action">{faceActionLabel(direction.target)}</small>
+            <small className="tk-dpad__action">
+              {faceActionLabel(direction.target, pomodoroWorkMinutes)}
+            </small>
           </button>
         );
       })}
@@ -802,6 +809,10 @@ export default function Home() {
   const setSoundscape = usePreferencesStore((s) => s.setSoundscape);
   const customMinutesStore = usePreferencesStore((s) => s.customMinutes);
   const setCustomMinutesStore = usePreferencesStore((s) => s.setCustomMinutes);
+  const pomodoroMultiplier = usePreferencesStore((s) => s.pomodoroMultiplier);
+  const setPomodoroMultiplier = usePreferencesStore(
+    (s) => s.setPomodoroMultiplier,
+  );
   const alarms = usePreferencesStore((s) => s.alarms);
   const hasSeenOnboarding = usePreferencesStore((s) => s.hasSeenOnboarding);
   const markOnboardingSeen = usePreferencesStore((s) => s.markOnboardingSeen);
@@ -891,6 +902,15 @@ export default function Home() {
   const firedAlarmRef = useRef<string | null>(null);
   const completionRef = useRef<number | null>(null);
   /**
+   * The work-block multiplier, read at the moment a block is scheduled rather
+   * than closed over. Two reasons: `activateFace` is a stable `useCallback([])`
+   * that would otherwise capture a stale value, and changing the setting
+   * mid-session should leave the block you are currently in alone — the new
+   * length starts with the next one.
+   */
+  const multiplierRef = useRef(pomodoroMultiplier);
+  multiplierRef.current = pomodoroMultiplier;
+  /**
    * Sessions started in this visit. PostHog's memory persistence makes one
    * page load exactly one visit, so this counter IS the sessions/visit metric.
    */
@@ -913,6 +933,8 @@ export default function Home() {
         ? null
         : topFaceId;
   const currentDate = useMemo(() => new Date(now), [now]);
+  /** How long one work block lasts at the chosen multiplier — labels only. */
+  const workBlockMinutes = pomodoroWorkMinutes(pomodoroMultiplier);
 
   // The active finish: the chosen colour normally, or the Pomodoro finish while
   // a Pomodoro runs so the whole cube signals work (red) vs break (green).
@@ -1133,6 +1155,7 @@ export default function Home() {
             cycle: 0,
             phase: "idle",
             totalCycles: POMODORO_TOTAL_CYCLES,
+            workMultiplier: multiplierRef.current,
           });
           completionRef.current = null;
 
@@ -1340,6 +1363,7 @@ export default function Home() {
         cycle: session.cycle,
         phase: session.phase,
         totalCycles: POMODORO_TOTAL_CYCLES,
+        workMultiplier: multiplierRef.current,
       });
 
       if (!step || step.phase === "done") {
@@ -2081,6 +2105,7 @@ export default function Home() {
                 directions={directions}
                 highlight={!hasSeenOnboarding}
                 onActivate={activateFace}
+                pomodoroWorkMinutes={workBlockMinutes}
                 topFaceId={session.kind === "pomodoro" ? "pomodoro" : topFaceId}
               />
             </div>
@@ -2151,8 +2176,41 @@ export default function Home() {
                 type="button"
               >
                 <strong>{copy.controls.pomodoro}</strong>
-                <span>{copy.panel.pomodoroAction}</span>
+                <span>{copy.panel.pomodoroAction(workBlockMinutes)}</span>
               </button>
+
+              {/* Sits right under the Pomodoro button because it only ever
+                  describes that button's outcome. */}
+              <div className="tk-block-picker">
+                <span className="tk-block-picker__label">
+                  {copy.panel.pomodoroBlockLabel}
+                </span>
+                <div className="tk-block-picker__options" role="group"
+                  aria-label={copy.panel.pomodoroBlockLabel}
+                >
+                  {POMODORO_MULTIPLIERS.map((multiplier) => {
+                    const minutes = pomodoroWorkMinutes(multiplier);
+                    const isActive = multiplier === pomodoroMultiplier;
+
+                    return (
+                      <button
+                        key={multiplier}
+                        aria-label={copy.aria.pomodoroBlock(multiplier, minutes)}
+                        aria-pressed={isActive}
+                        className={`tk-block-picker__option${isActive ? " is-active" : ""}`}
+                        onClick={() => setPomodoroMultiplier(multiplier)}
+                        type="button"
+                      >
+                        <strong>{`x${multiplier}`}</strong>
+                        <span>{`${minutes} min`}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <small className="tk-block-picker__hint">
+                  {copy.panel.pomodoroBlockHint}
+                </small>
+              </div>
               <button
                 className={`tk-face-button tk-face-button--wide${topFaceId === "screen" ? " is-active" : ""}`}
                 onClick={() => activateFace("screen", "panel")}

@@ -103,7 +103,11 @@ export const copy = {
       `Cuenta regresiva personalizada (${min}–${max} min)`,
     stopwatchHint: (maxMinutes: number) =>
       `Cuenta hacia arriba hasta ${maxMinutes} minutos.`,
-    pomodoroAction: "25 / 5 · 4 ciclos",
+    pomodoroAction: (workMinutes: number) => `${workMinutes} / 5 · 4 ciclos`,
+    pomodoroBlockLabel: "Bloque de trabajo",
+    pomodoroBlockHint: "El descanso siempre son 5 minutos.",
+    pomodoroBlockOption: (multiplier: number, workMinutes: number) =>
+      `x${multiplier} · ${workMinutes} min`,
     clockAction: "Pausa la cuenta",
     pauseAction: "Pausa",
     cycle: (cycle: number, total: number) => `Ciclo ${cycle}/${total}`,
@@ -150,6 +154,8 @@ export const copy = {
     activateAlarm: (id: string) => `Activar alarma ${id}`,
     alarmTime: (id: string) => `Hora de la alarma ${id}`,
     deleteAlarm: (id: string) => `Eliminar alarma ${id}`,
+    pomodoroBlock: (multiplier: number, workMinutes: number) =>
+      `Bloque de trabajo x${multiplier}, ${workMinutes} minutos. El descanso sigue en 5 minutos.`,
   },
 
   notifications: {

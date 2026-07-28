@@ -25,6 +25,8 @@ export type PomodoroState = {
   cycle: number;
   phase: PomodoroPhase;
   totalCycles: number;
+  /** Stretches the work block only. See `POMODORO_MULTIPLIERS`. */
+  workMultiplier: number;
 };
 
 export type Alarm = {
@@ -37,6 +39,45 @@ export type Alarm = {
 export const POMODORO_WORK_MS = 25 * 60 * 1000;
 export const POMODORO_BREAK_MS = 5 * 60 * 1000;
 export const POMODORO_TOTAL_CYCLES = 4;
+
+/**
+ * The work block stretches in whole multiples of 25 minutes — 25, 50, 75 or
+ * 100. Whole multiples rather than free minutes on purpose: the block stays
+ * recognisably a Pomodoro, and the readout stays a time anyone can picture.
+ *
+ * The break is deliberately absent from this: a longer stretch of focus still
+ * earns the same short breather, which is the entire point of the setting.
+ */
+export const POMODORO_MULTIPLIERS = [1, 2, 3, 4] as const;
+
+export type PomodoroMultiplier = (typeof POMODORO_MULTIPLIERS)[number];
+
+const MIN_POMODORO_MULTIPLIER = POMODORO_MULTIPLIERS[0];
+const MAX_POMODORO_MULTIPLIER =
+  POMODORO_MULTIPLIERS[POMODORO_MULTIPLIERS.length - 1];
+
+/**
+ * Deep links and `localStorage` both feed this, so it has to survive anything:
+ * a stale multiplier from an older build, a hand-edited URL, or plain garbage.
+ * Non-finite input falls back to x1 rather than clamping, because there is no
+ * sensible edge to clamp `NaN` towards.
+ */
+export function clampPomodoroMultiplier(value: number): PomodoroMultiplier {
+  if (!Number.isFinite(value)) {
+    return MIN_POMODORO_MULTIPLIER;
+  }
+
+  const whole = Math.floor(value);
+  if (whole < MIN_POMODORO_MULTIPLIER) return MIN_POMODORO_MULTIPLIER;
+  if (whole > MAX_POMODORO_MULTIPLIER) return MAX_POMODORO_MULTIPLIER;
+
+  return whole as PomodoroMultiplier;
+}
+
+/** Minutes a work block lasts at a given multiplier — for labels and copy. */
+export function pomodoroWorkMinutes(multiplier: number): number {
+  return (POMODORO_WORK_MS / 60_000) * clampPomodoroMultiplier(multiplier);
+}
 
 export const CUSTOM_MIN_MINUTES = 1;
 export const CUSTOM_MAX_MINUTES = 99;
@@ -265,8 +306,11 @@ export function getNextPomodoroStep(state: PomodoroState) {
     return null;
   }
 
+  // Only the work block stretches; the break below stays untouched.
+  const workMs = POMODORO_WORK_MS * clampPomodoroMultiplier(state.workMultiplier);
+
   if (state.phase === "idle") {
-    return { cycle: 1, phase: "work" as const, durationMs: POMODORO_WORK_MS };
+    return { cycle: 1, phase: "work" as const, durationMs: workMs };
   }
 
   if (state.phase === "work") {
@@ -281,7 +325,7 @@ export function getNextPomodoroStep(state: PomodoroState) {
     return {
       cycle: Math.min(state.cycle + 1, state.totalCycles),
       phase: "work" as const,
-      durationMs: POMODORO_WORK_MS,
+      durationMs: workMs,
     };
   }
 

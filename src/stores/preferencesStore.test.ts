@@ -43,6 +43,47 @@ describe("preferencesStore", () => {
     expect(usePreferencesStore.getState().customMinutes).toBe(45);
   });
 
+  describe("pomodoroMultiplier", () => {
+    it("arranca en x1, el pomodoro clásico", () => {
+      expect(usePreferencesStore.getState().pomodoroMultiplier).toBe(1);
+    });
+
+    it("setPomodoroMultiplier actualiza el multiplicador", () => {
+      usePreferencesStore.getState().setPomodoroMultiplier(3);
+      expect(usePreferencesStore.getState().pomodoroMultiplier).toBe(3);
+    });
+
+    // The setter is reachable from a deep link, so it guards its own range
+    // instead of trusting every caller to have clamped first.
+    it.each([
+      ["por encima del rango", 7, 4],
+      ["por debajo del rango", 0, 1],
+      ["basura", Number.NaN, 1],
+    ])("corrige un valor %s antes de guardarlo", (_label, input, expected) => {
+      usePreferencesStore.getState().setPomodoroMultiplier(input);
+      expect(usePreferencesStore.getState().pomodoroMultiplier).toBe(expected);
+    });
+
+    it("sanea un multiplicador fuera de rango que venía guardado", () => {
+      const merge = usePreferencesStore.persist.getOptions().merge!;
+      const merged = merge(
+        { pomodoroMultiplier: 12 },
+        usePreferencesStore.getState(),
+      ) as { pomodoroMultiplier: number };
+
+      expect(merged.pomodoroMultiplier).toBe(4);
+    });
+
+    it("conserva x1 cuando no había nada guardado", () => {
+      const merge = usePreferencesStore.persist.getOptions().merge!;
+      const merged = merge({}, usePreferencesStore.getState()) as {
+        pomodoroMultiplier: number;
+      };
+
+      expect(merged.pomodoroMultiplier).toBe(1);
+    });
+  });
+
   it("markOnboardingSeen marca como visto", () => {
     expect(usePreferencesStore.getState().hasSeenOnboarding).toBe(false);
     usePreferencesStore.getState().markOnboardingSeen();

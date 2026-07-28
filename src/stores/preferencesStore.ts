@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { todayKey } from "@/utils/dates";
+import { clampPomodoroMultiplier } from "@/utils/cube";
 
 export type CubeFinish = "black" | "white" | "blue" | "lavender";
 export type AlertType = "sound" | "vibration" | "silent";
@@ -33,6 +34,10 @@ export interface PreferencesState {
   // Custom countdown
   customMinutes: number;
 
+  // Pomodoro work-block length, in whole multiples of 25 min. The break never
+  // scales with it.
+  pomodoroMultiplier: number;
+
   // Alarms
   alarms: AlarmConfig[];
 
@@ -62,6 +67,7 @@ export interface PreferencesState {
   setAlertType: (type: AlertType) => void;
   setSoundscape: (soundscape: SoundscapeId) => void;
   setCustomMinutes: (minutes: number) => void;
+  setPomodoroMultiplier: (multiplier: number) => void;
   setAlarms: (alarms: AlarmConfig[]) => void;
   updateAlarm: (id: string, patch: Partial<AlarmConfig>) => void;
   markOnboardingSeen: () => void;
@@ -107,6 +113,7 @@ export const initialPreferences = {
   alertType: "sound" as AlertType,
   soundscape: "focus" as SoundscapeId,
   customMinutes: 25,
+  pomodoroMultiplier: 1,
   alarms: defaultAlarms,
   hasSeenOnboarding: false,
   notificationsEnabled: false,
@@ -128,6 +135,11 @@ export const usePreferencesStore = create<PreferencesState>()(
       setAlertType: (type) => set({ alertType: type }),
       setSoundscape: (soundscape) => set({ soundscape }),
       setCustomMinutes: (minutes) => set({ customMinutes: minutes }),
+
+      // Clamped here rather than at the call sites: a deep link can reach this
+      // with anything, and one guard at the write beats four at the readers.
+      setPomodoroMultiplier: (multiplier) =>
+        set({ pomodoroMultiplier: clampPomodoroMultiplier(multiplier) }),
       setAlarms: (alarms) => set({ alarms }),
 
       updateAlarm: (id, patch) =>
@@ -209,6 +221,7 @@ export const usePreferencesStore = create<PreferencesState>()(
         alertType: state.alertType,
         soundscape: state.soundscape,
         customMinutes: state.customMinutes,
+        pomodoroMultiplier: state.pomodoroMultiplier,
         alarms: state.alarms,
         hasSeenOnboarding: state.hasSeenOnboarding,
         notificationsEnabled: state.notificationsEnabled,
@@ -231,6 +244,12 @@ export const usePreferencesStore = create<PreferencesState>()(
             ...defaultSectionsCollapsed,
             ...(saved.panelSectionsCollapsed ?? {}),
           },
+          // Stored preferences outlive the code that wrote them: a multiplier
+          // saved by a build with a wider range, or edited by hand, must not
+          // come back as a session length this build never offers.
+          pomodoroMultiplier: clampPomodoroMultiplier(
+            saved.pomodoroMultiplier ?? current.pomodoroMultiplier,
+          ),
         };
       },
     },

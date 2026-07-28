@@ -8,7 +8,9 @@ import {
   CUSTOM_MAX_MINUTES,
   CUSTOM_MIN_MINUTES,
   POMODORO_BREAK_MS,
+  POMODORO_MULTIPLIERS,
   POMODORO_WORK_MS,
+  clampPomodoroMultiplier,
   STOPWATCH_MAX_MS,
   clampCustomMinutes,
   clampStopwatchMs,
@@ -195,6 +197,7 @@ describe("getNextPomodoroStep", () => {
       cycle: 0,
       phase: "idle",
       totalCycles: 4,
+      workMultiplier: 1,
     });
 
     expect(next).toEqual({ cycle: 1, phase: "work", durationMs: POMODORO_WORK_MS });
@@ -206,6 +209,7 @@ describe("getNextPomodoroStep", () => {
       cycle: 2,
       phase: "work",
       totalCycles: 4,
+      workMultiplier: 1,
     });
 
     expect(next).toEqual({ cycle: 2, phase: "break", durationMs: POMODORO_BREAK_MS });
@@ -217,9 +221,87 @@ describe("getNextPomodoroStep", () => {
       cycle: 4,
       phase: "work",
       totalCycles: 4,
+      workMultiplier: 1,
     });
 
     expect(next).toEqual({ cycle: 4, phase: "done", durationMs: 0 });
+  });
+});
+
+describe("multiplicador del bloque de trabajo", () => {
+  it.each(POMODORO_MULTIPLIERS)(
+    "multiplica el primer bloque de trabajo por x%i",
+    (multiplier) => {
+      const next = getNextPomodoroStep({
+        enabled: true,
+        cycle: 0,
+        phase: "idle",
+        totalCycles: 4,
+        workMultiplier: multiplier,
+      });
+
+      expect(next?.durationMs).toBe(POMODORO_WORK_MS * multiplier);
+    },
+  );
+
+  it("multiplica también los bloques de trabajo posteriores al descanso", () => {
+    const next = getNextPomodoroStep({
+      enabled: true,
+      cycle: 2,
+      phase: "break",
+      totalCycles: 4,
+      workMultiplier: 3,
+    });
+
+    expect(next).toEqual({
+      cycle: 3,
+      phase: "work",
+      durationMs: POMODORO_WORK_MS * 3,
+    });
+  });
+
+  // The whole point of the feature: longer focus, same short breather.
+  it.each(POMODORO_MULTIPLIERS)(
+    "deja el descanso intacto con x%i",
+    (multiplier) => {
+      const next = getNextPomodoroStep({
+        enabled: true,
+        cycle: 1,
+        phase: "work",
+        totalCycles: 4,
+        workMultiplier: multiplier,
+      });
+
+      expect(next?.durationMs).toBe(POMODORO_BREAK_MS);
+    },
+  );
+
+  it("ofrece x1 a x4 y nada más", () => {
+    expect(POMODORO_MULTIPLIERS).toEqual([1, 2, 3, 4]);
+  });
+
+  describe("clampPomodoroMultiplier", () => {
+    it.each(POMODORO_MULTIPLIERS)("acepta x%i tal cual", (multiplier) => {
+      expect(clampPomodoroMultiplier(multiplier)).toBe(multiplier);
+    });
+
+    it.each([
+      ["por debajo del rango", 0, 1],
+      ["negativo", -3, 1],
+      ["por encima del rango", 9, 4],
+      ["fraccionario", 2.7, 2],
+    ])("corrige un valor %s", (_label, input, expected) => {
+      expect(clampPomodoroMultiplier(input)).toBe(expected);
+    });
+
+    // Deep links and localStorage are untrusted input, so garbage must land
+    // on the default rather than produce a NaN-length session.
+    it.each([
+      ["NaN", Number.NaN],
+      ["Infinity", Number.POSITIVE_INFINITY],
+    ])("cae en x1 ante %s", (_label, input) => {
+      expect(clampPomodoroMultiplier(input)).toBe(1);
+    });
   });
 });
 
