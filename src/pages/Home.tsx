@@ -406,6 +406,22 @@ function CubeScreen({
 
   useEffect(() => () => texture?.dispose(), [texture]);
 
+  /**
+   * At rest the canvas repaints on demand, which means a new readout only
+   * reaches the screen if something calls `invalidate`. Today R3F does that on
+   * its own because the material's `map` prop changed — but that is an
+   * implicit chain, and a clock is the last thing that should depend on one.
+   * If it ever fails to fire, the face silently keeps showing the old minute
+   * with nothing to recover it.
+   *
+   * A repainted texture asks for a frame outright. It costs one call per
+   * readout change and removes the whole failure mode.
+   */
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    invalidate();
+  }, [texture, invalidate]);
+
   return (
     <group position={[0, 0, 0.588]} rotation={[0, 0, screenSpin]}>
       {/* The screen is baked into the texture (rounded, transparent margins) and
@@ -1332,6 +1348,30 @@ export default function Home() {
     const id = window.setInterval(() => setNow(Date.now()), tickMs);
     return () => window.clearInterval(id);
   }, [tickMs]);
+
+  /**
+   * An interval is not a clock. Mobile browsers suspend timers whenever they
+   * feel like it — a locked screen, a backgrounded tab, low-power mode — and
+   * they do not replay the ticks that were missed. The readout would then sit
+   * on whatever minute it was showing when the timer stopped, which reads as a
+   * frozen clock rather than a paused one.
+   *
+   * So every path back to the foreground resamples the wall clock directly
+   * instead of waiting for the next tick that may never come.
+   */
+  useEffect(() => {
+    const resync = () => setNow(Date.now());
+
+    document.addEventListener("visibilitychange", resync);
+    window.addEventListener("focus", resync);
+    window.addEventListener("pageshow", resync);
+
+    return () => {
+      document.removeEventListener("visibilitychange", resync);
+      window.removeEventListener("focus", resync);
+      window.removeEventListener("pageshow", resync);
+    };
+  }, []);
 
   /** Countdown reaching zero: alert, then advance pomodoro or fall back to clock. */
   useEffect(() => {
