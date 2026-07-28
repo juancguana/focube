@@ -738,17 +738,126 @@ input:focus-visible,
     padding: 16px;
   }
 
-  .tk-stage {
-    min-height: 420px;
-    border-radius: 24px;
-  }
-
   .tk-faces {
     grid-template-columns: repeat(2, 1fr);
   }
 
   .tk-readout__value {
     font-size: 42px;
+  }
+
+  /*
+   * Narrow layout: the stage stops being a canvas with things floating over
+   * it and becomes an ordinary column.
+   *
+   * Every overlay — chips, tools, legend, and the four arrows — is absolutely
+   * positioned with offsets tuned for a wide stage. Below ~720px those
+   * rectangles start landing on top of each other: the chips ran under the
+   * Mini/Focus buttons and the up arrow, and the legend disappeared behind
+   * the Pomodoro arrow. Nudging the offsets only moves the collision, so the
+   * overlay model is dropped here instead of patched.
+   */
+  .tk-stage {
+    display: grid;
+    /* Chips share a row with the tools instead of stacking: two rows of
+       controls is a lot of vertical budget to spend on a phone. */
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr auto;
+    align-items: start;
+    gap: 10px;
+    padding: 12px;
+    min-height: 0;
+    border-radius: 24px;
+  }
+
+  .tk-hud,
+  .tk-legend,
+  .tk-stage-tools {
+    position: static;
+    inset: auto;
+  }
+
+  .tk-hud {
+    grid-column: 1;
+    grid-row: 1;
+    padding: 0;
+  }
+
+  .tk-stage-tools {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+
+  .tk-scene-slot {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    position: relative;
+    /* Grows with the stage but never collapses below a usable cube. */
+    min-height: 340px;
+  }
+
+  .tk-legend {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    max-width: none;
+    font-size: 0.72rem;
+    background: rgba(24, 28, 36, 0.62);
+  }
+
+  /* The canvas keeps the space it has left; the arrows sit under it. */
+  .tk-scene-host {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tk-canvas {
+    position: relative;
+    inset: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* Arrows become a real control bar instead of four floating overlays. */
+  .tk-dpad:not(.is-compact) {
+    position: static;
+    inset: auto;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .tk-dpad:not(.is-compact) .tk-dpad__btn {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    transform: none;
+    min-width: 0;
+    padding: 8px 4px;
+  }
+
+  /* Hover-scale would fight the grid; the row is for touch anyway. */
+  .tk-dpad:not(.is-compact) .tk-dpad__btn:hover:not(:disabled) {
+    transform: none;
+  }
+
+  .tk-dpad:not(.is-compact) .tk-dpad__face {
+    font-size: 0.86rem;
+  }
+
+  .tk-dpad:not(.is-compact) .tk-dpad__action {
+    font-size: 0.55rem;
+  }
+}
+
+/* Phone widths: four arrows in one row squeeze "25 / 5 · 4 CICLOS" into
+   an unreadable sliver, so they wrap into a 2x2 pad. */
+@media (max-width: 460px) {
+  .tk-dpad:not(.is-compact) {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
