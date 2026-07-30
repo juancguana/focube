@@ -72,13 +72,22 @@ import {
   formatWeekday,
   getFaceById,
   getModeForFace,
-  getNextPomodoroStep,
   nearestTip,
   orientationQuaternion,
   pomodoroWorkMinutes,
   snapDialStep,
   tipForFace,
 } from "@/utils/cube";
+import {
+  IDLE,
+  posedFaceFor,
+  remainingMsOf,
+  resumeTargetOf,
+  sessionMinutes,
+  sessionReducer,
+  type Session,
+  type SessionAction,
+} from "@/utils/session";
 import {
   isStreakVisible,
   usePreferencesStore,
@@ -110,26 +119,6 @@ import {
 } from "@/signals/events";
 
 type QuaternionTuple = [number, number, number, number];
-
-/** `paused` mirrors the physical cube: screen up freezes, it does not cancel. */
-type Paused = { paused?: boolean; remainingMs?: number };
-
-type Session =
-  | { kind: "idle" }
-  | ({
-      kind: "countdown";
-      durationMs: number;
-      endsAt: number;
-      label: string;
-      faceId: FaceId | null;
-    } & Paused)
-  | ({
-      kind: "pomodoro";
-      durationMs: number;
-      endsAt: number;
-      phase: "work" | "break";
-      cycle: number;
-    } & Paused);
 
 const CUBE_PALETTES: Record<
   CubeColor,
@@ -680,37 +669,6 @@ function FocubeCube({
 
 const VIBRATION_PATTERN = [220, 120, 220, 120, 320];
 
-/** Minutes a session was set for, for analytics. */
-function sessionMinutes(session: Exclude<Session, { kind: "idle" }>) {
-  return Math.round(session.durationMs / 60_000);
-}
-
-/**
- * Builds the `session_abandoned` event for a session being discarded before
- * it reached zero, or `null` when there is nothing to report.
- *
- * Completion rate needs a denominator: without this, we would know how many
- * sessions finished but not how many were started and walked away from.
- */
-function abandonmentOf(session: Session, now: number) {
-  if (session.kind === "idle") return null;
-
-  const remainingMs = session.paused
-    ? (session.remainingMs ?? 0)
-    : Math.max(0, session.endsAt - now);
-
-  // Already at zero: that is a completion, and it reports itself.
-  if (remainingMs <= 0 || session.durationMs <= 0) return null;
-
-  const elapsed = session.durationMs - remainingMs;
-
-  return sessionAbandoned({
-    mode: session.kind === "pomodoro" ? "pomodoro" : "countdown",
-    minutes: sessionMinutes(session),
-    elapsedRatio: Number((elapsed / session.durationMs).toFixed(3)),
-  });
-}
-
 /** What landing on a face will actually do, phrased as an outcome. */
 function describeFace(faceId: FaceId) {
   if (faceId === "screen") {
@@ -760,6 +718,7 @@ function CubeControls({
   topFaceId,
   onActivate,
   pomodoroWorkMinutes,
+  resumeFaceId = null,
   compact = false,
   highlight = false,
 }: {
@@ -768,6 +727,8 @@ function CubeControls({
   onActivate: (faceId: FaceId) => void;
   /** Length of one work block, so the Pomodoro arrow can advertise it. */
   pomodoroWorkMinutes: number;
+  /** Target that resumes a paused session, so its arrow says so. */
+  resumeFaceId?: FaceId | null;
   compact?: boolean;
   /** First visit: the arrows pulse so the one gesture that matters is obvious. */
   highlight?: boolean;
@@ -778,10 +739,16 @@ function CubeControls({
     >
       {directions.map((direction) => {
         const isCurrent = direction.target === topFaceId;
+        // Resuming and starting land on the same face, so the arrow has to say
+        // which one it is — otherwise "10 min" reads as a restart from zero.
+        const isResume = resumeFaceId !== null && direction.target === resumeFaceId;
+        const action = faceActionLabel(direction.target, pomodoroWorkMinutes);
+
         return (
           <button
             key={direction.id}
-            className={`tk-dpad__btn tk-dpad__btn--${direction.id}${isCurrent ? " is-current" : ""}`}
+            aria-label={isResume ? copy.aria.resume(action) : undefined}
+            className={`tk-dpad__btn tk-dpad__btn--${direction.id}${isCurrent ? " is-current" : ""}${isResume ? " is-resume" : ""}`}
             // data-face lets a native listener drive these in the PiP window,
             // where React's delegated events (bound to the main document) never
             // fire.
@@ -791,10 +758,10 @@ function CubeControls({
             type="button"
           >
             <span className="tk-dpad__arrow">{direction.icon}</span>
-            <span className="tk-dpad__face">{faceName(direction.target)}</span>
-            <small className="tk-dpad__action">
-              {faceActionLabel(direction.target, pomodoroWorkMinutes)}
-            </small>
+            <span className="tk-dpad__face">
+              {isResume ? copy.panel.resumeName : faceName(direction.target)}
+            </span>
+            <small className="tk-dpad__action">{action}</small>
           </button>
         );
       })}
@@ -872,7 +839,7 @@ export default function Home() {
   const [isMiniPlayer, setIsMiniPlayer] = useState(false);
   const [settleToken, setSettleToken] = useState(0);
 
-  const [session, setSession] = useState<Session>({ kind: "idle" });
+  const [session, setSession] = useState<Session>(IDLE);
   const [alertUntil, setAlertUntil] = useState(0);
   /** The last completed session: drives the celebration and the notification. */
   const [completion, setCompletion] = useState<{
@@ -932,6 +899,13 @@ export default function Home() {
    * page load exactly one visit, so this counter IS the sessions/visit metric.
    */
   const sessionIndexRef = useRef(0);
+  /**
+   * The live session, readable from the stable callbacks below without making
+   * them depend on it — `activateFace` in particular must not be rebuilt on
+   * every tick, since the 3D face pickers are bound to it.
+   */
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const previewRef = useRef<FocusSoundscape | null>(null);
   const previewTimersRef = useRef<number[]>([]);
 
@@ -970,26 +944,33 @@ export default function Home() {
     return [q.x, q.y, q.z, q.w];
   }, [pose.dialAngle, pose.tipAngle]);
 
+  const isPaused = session.kind !== "idle" && Boolean(session.paused);
+  /** Non-null while a session is frozen: the one move that brings it back. */
+  const resumeTarget = resumeTargetOf(session);
+  /** What the resume control continues, in the wording of how it was started. */
+  const resumeLabel = resumeTarget
+    ? faceActionLabel(resumeTarget, workBlockMinutes)
+    : session.kind === "countdown"
+      ? session.label
+      : "";
+
   // Arrow targets: left/right step the dial ring from the remembered position,
-  // up is always Reloj (pause), down is always 60.
+  // up is always Reloj (pause), down is Pomodoro.
   const dialBase = dialStepForFace(dialFaceId);
   const directions = useMemo<Direction[]>(
     () => [
       { id: "up", icon: <ChevronUp size={20} />, target: "screen" },
       { id: "left", icon: <ChevronLeft size={20} />, target: faceForPose(dialBase - 1, "none") },
       { id: "right", icon: <ChevronRight size={20} />, target: faceForPose(dialBase + 1, "none") },
-      { id: "down", icon: <ChevronDown size={20} />, target: "pomodoro" },
+      // Down turns into the way back while something is paused, so pressing up
+      // always has a one-press undo. Without it the only arrows left were the
+      // dial neighbours, and each of those discards the paused session.
+      { id: "down", icon: <ChevronDown size={20} />, target: resumeTarget ?? "pomodoro" },
     ],
-    [dialBase],
+    [dialBase, resumeTarget],
   );
 
-  const remainingMs =
-    session.kind === "idle"
-      ? 0
-      : session.paused
-        ? // Frozen: reading endsAt while paused would keep draining the display.
-          (session.remainingMs ?? 0)
-        : Math.max(0, session.endsAt - now);
+  const remainingMs = remainingMsOf(session, now);
   const progressRatio =
     session.kind === "idle" || session.durationMs === 0
       ? 0
@@ -1062,36 +1043,85 @@ export default function Home() {
 
   // -- orientation ----------------------------------------------------------
 
-  const startCountdownMinutes = useCallback(
-    (minutes: number, label: string, faceId: FaceId | null) => {
-      const durationMs = minutes * 60 * 1000;
-      completionRef.current = null;
+  /**
+   * Runs a session transition and everything that hangs off it: the
+   * abandonment event, the announcement, the analytics.
+   *
+   * The rules live in `sessionReducer` where they can be tested; only the
+   * effects live here. They used to run inside the `setSession` updater, which
+   * React is free to re-run or discard — an updater is meant to be a pure
+   * function of the previous state, not the place a session is announced and
+   * reported from.
+   */
+  const applySession = useCallback(
+    (action: SessionAction, source: SessionSource = "cube") => {
+      const { session: next, change, abandoned } = sessionReducer(
+        sessionRef.current,
+        action,
+      );
 
-      setSession((current) => {
-        const abandoned = abandonmentOf(current, Date.now());
-        if (abandoned) trackEvent(abandoned);
+      if (change.kind === "none") {
+        return;
+      }
 
+      if (abandoned) {
+        trackEvent(sessionAbandoned(abandoned));
+      }
+
+      if (change.kind === "started") {
+        completionRef.current = null;
         sessionIndexRef.current += 1;
         trackEvent(
           sessionStarted({
-            mode: "custom",
-            minutes,
+            // Custom minutes are a countdown with no face behind them, and
+            // they are reported under their own name.
+            mode:
+              action.type === "start-countdown" && action.faceId === null
+                ? "custom"
+                : change.mode,
+            minutes: change.minutes,
             msSinceLoad: Math.round(performance.now()),
             sessionIndexInVisit: sessionIndexRef.current,
-            source: "panel",
+            source,
           }),
         );
+        setLiveMessage(
+          change.mode === "pomodoro"
+            ? copy.timer.pomodoroStart(1, POMODORO_TOTAL_CYCLES)
+            : copy.timer.started(change.minutes),
+        );
+      }
 
-        return {
-          kind: "countdown",
-          durationMs,
-          endsAt: Date.now() + durationMs,
-          label,
-          faceId,
-        };
-      });
+      if (change.kind === "resumed") {
+        setLiveMessage(
+          change.label === null
+            ? copy.timer.pomodoroResumed
+            : copy.timer.resumed(change.label),
+        );
+      }
+
+      if (change.kind === "paused") {
+        setLiveMessage(copy.timer.paused);
+      }
+
+      if (change.kind === "reset") {
+        setLiveMessage(copy.timer.reset);
+      }
+
+      sessionRef.current = next;
+      setSession(next);
     },
     [],
+  );
+
+  const startCountdownMinutes = useCallback(
+    (minutes: number, label: string, faceId: FaceId | null) => {
+      applySession(
+        { type: "start-countdown", minutes, label, faceId, now: Date.now() },
+        "panel",
+      );
+    },
+    [applySession],
   );
 
   const moveToFace = useCallback((faceId: FaceId) => {
@@ -1156,52 +1186,14 @@ export default function Home() {
       // pose, mirroring the physical cube's "put 5 up and long-press".
       if (faceId === "pomodoro") {
         moveToFace("five");
-        setSession((current) => {
-          if (current.kind === "pomodoro" && current.paused) {
-            setLiveMessage(copy.timer.pomodoroResumed);
-            return {
-              ...current,
-              paused: false,
-              endsAt: Date.now() + (current.remainingMs ?? 0),
-            };
-          }
-
-          setLiveMessage(copy.timer.pomodoroStart(1, POMODORO_TOTAL_CYCLES));
-          const step = getNextPomodoroStep({
-            enabled: true,
-            cycle: 0,
-            phase: "idle",
-            totalCycles: POMODORO_TOTAL_CYCLES,
+        applySession(
+          {
+            type: "start-pomodoro",
             workMultiplier: multiplierRef.current,
-          });
-          completionRef.current = null;
-
-          const abandoned = abandonmentOf(current, Date.now());
-          if (abandoned) trackEvent(abandoned);
-
-          if (step) {
-            sessionIndexRef.current += 1;
-            trackEvent(
-              sessionStarted({
-                mode: "pomodoro",
-                minutes: Math.round(step.durationMs / 60_000),
-                msSinceLoad: Math.round(performance.now()),
-                sessionIndexInVisit: sessionIndexRef.current,
-                source,
-              }),
-            );
-          }
-
-          return step
-            ? {
-                kind: "pomodoro" as const,
-                durationMs: step.durationMs,
-                endsAt: Date.now() + step.durationMs,
-                phase: "work" as const,
-                cycle: step.cycle,
-              }
-            : current;
-        });
+            now: Date.now(),
+          },
+          source,
+        );
         return;
       }
 
@@ -1214,63 +1206,29 @@ export default function Home() {
 
       // Screen up pauses whatever is running, like the physical cube.
       if (faceId === "screen") {
-        setSession((current) => {
-          if (current.kind === "idle" || current.paused) {
-            return current;
-          }
-
-          setLiveMessage(copy.timer.paused);
-          return {
-            ...current,
-            paused: true,
-            remainingMs: Math.max(0, current.endsAt - Date.now()),
-          };
-        });
+        applySession({ type: "pause", now: Date.now() });
         return;
       }
 
-      setSession((current) => {
-        // Coming back to the face that was paused resumes it.
-        if (
-          current.kind === "countdown" &&
-          current.paused &&
-          current.faceId === faceId
-        ) {
-          setLiveMessage(copy.timer.resumed(face.label));
-          return {
-            ...current,
-            paused: false,
-            endsAt: Date.now() + (current.remainingMs ?? 0),
-          };
-        }
+      // Landing back on the face a session was paused from continues it, which
+      // is the whole point of pausing rather than cancelling.
+      if (resumeTargetOf(sessionRef.current) === faceId) {
+        applySession({ type: "resume", now: Date.now() });
+        return;
+      }
 
-        setLiveMessage(copy.timer.started(face.minutes ?? 0));
-        completionRef.current = null;
-
-        const abandoned = abandonmentOf(current, Date.now());
-        if (abandoned) trackEvent(abandoned);
-
-        sessionIndexRef.current += 1;
-        trackEvent(
-          sessionStarted({
-            mode: "countdown",
-            minutes: face.minutes ?? 0,
-            msSinceLoad: Math.round(performance.now()),
-            sessionIndexInVisit: sessionIndexRef.current,
-            source,
-          }),
-        );
-
-        return {
-          kind: "countdown" as const,
-          durationMs: (face.minutes ?? 0) * 60 * 1000,
-          endsAt: Date.now() + (face.minutes ?? 0) * 60 * 1000,
+      applySession(
+        {
+          type: "start-countdown",
+          minutes: face.minutes ?? 0,
           label: `${face.minutes} min`,
           faceId,
-        };
-      });
+          now: Date.now(),
+        },
+        source,
+      );
     },
-    [armAudioContext, markOnboardingSeen, moveToFace],
+    [applySession, armAudioContext, markOnboardingSeen, moveToFace],
   );
 
   // Keep the PiP native listener pointing at the current activateFace.
@@ -1286,9 +1244,35 @@ export default function Home() {
       tip === "none" && wasTipped
         ? dialMemoryRef.current
         : snapDialStep(pose.dialAngle);
+    const landed = faceForPose(step, tip);
 
-    activateFace(faceForPose(step, tip));
-  }, [activateFace, pose.dialAngle, pose.tipAngle]);
+    // Untipping back onto the pose you paused from is the "put it back"
+    // gesture, so it resumes instead of starting over. Landing anywhere else
+    // is a deliberate change of mind and still starts fresh.
+    if (resumeTarget && landed === posedFaceFor(resumeTarget)) {
+      activateFace(resumeTarget);
+      return;
+    }
+
+    activateFace(landed);
+  }, [activateFace, pose.dialAngle, pose.tipAngle, resumeTarget]);
+
+  /**
+   * Continues whatever is frozen. The cube gestures can only express a return
+   * to a face, and a custom countdown has none — it is started from the panel
+   * and never poses the cube — so without this it could be paused and then
+   * never picked up again.
+   */
+  const resumeSession = useCallback(() => {
+    // A target also poses the cube back where it was; a faceless countdown has
+    // nowhere to go, so it just picks up where it left off.
+    if (resumeTarget) {
+      activateFace(resumeTarget, "panel");
+      return;
+    }
+
+    applySession({ type: "resume", now: Date.now() });
+  }, [activateFace, applySession, resumeTarget]);
 
   /** Steps the dial by whole quarter turns — used by the arrow keys. */
   const stepDial = useCallback(
@@ -1385,6 +1369,11 @@ export default function Home() {
 
     completionRef.current = session.endsAt;
     const at = Date.now();
+    const { session: next, change } = sessionReducer(session, {
+      type: "advance",
+      workMultiplier: multiplierRef.current,
+      now: at,
+    });
 
     /** Every path below reaches zero, so every path is a completion. */
     const reportCompleted = (mode: string) =>
@@ -1398,70 +1387,60 @@ export default function Home() {
         }),
       );
 
-    if (session.kind === "pomodoro") {
-      const step = getNextPomodoroStep({
-        enabled: true,
-        cycle: session.cycle,
-        phase: session.phase,
-        totalCycles: POMODORO_TOTAL_CYCLES,
-        workMultiplier: multiplierRef.current,
-      });
-
-      if (!step || step.phase === "done") {
-        setCompletion({
-          at,
-          message: copy.timer.pomodoroDone,
-          notification: copy.notifications.pomodoroDone,
-        });
-        fireAlert(copy.timer.pomodoroDone);
-        reportCompleted("pomodoro");
-        incrementDailySession();
-        setSession({ kind: "idle" });
-        moveToFace("screen");
-        return;
-      }
-
-      const isBreak = step.phase !== "work";
-      const phaseName = isBreak ? copy.timer.rest : copy.timer.work;
+    if (change.kind === "advanced") {
+      const isBreak = change.phase === "break";
+      // A finished work block is the win worth celebrating; the break that
+      // follows is announced, not applauded.
+      const message = isBreak
+        ? copy.timer.break(change.cycle, POMODORO_TOTAL_CYCLES)
+        : copy.timer.pomodoroStart(change.cycle, POMODORO_TOTAL_CYCLES);
 
       setCompletion({
         at,
-        // A finished work block is the win worth celebrating; the break that
-        // follows is announced, not applauded.
-        message: isBreak
-          ? copy.timer.break(step.cycle, POMODORO_TOTAL_CYCLES)
-          : copy.timer.pomodoroStart(step.cycle, POMODORO_TOTAL_CYCLES),
-        notification: copy.notifications.phaseComplete(phaseName),
+        message,
+        notification: copy.notifications.phaseComplete(
+          isBreak ? copy.timer.rest : copy.timer.work,
+        ),
       });
-      fireAlert(
-        isBreak
-          ? copy.timer.break(step.cycle, POMODORO_TOTAL_CYCLES)
-          : copy.timer.pomodoroStart(step.cycle, POMODORO_TOTAL_CYCLES),
-      );
-      if (isBreak) {
-        // Only completed work blocks count as focus sessions.
+      fireAlert(message);
+
+      if (change.workBlockCompleted) {
         reportCompleted("pomodoro_block");
         incrementDailySession();
       }
-      setSession({
-        kind: "pomodoro",
-        durationMs: step.durationMs,
-        endsAt: Date.now() + step.durationMs,
-        phase: isBreak ? "break" : "work",
-        cycle: step.cycle,
-      });
+
+      sessionRef.current = next;
+      setSession(next);
       return;
     }
 
+    if (change.kind !== "finished") {
+      return;
+    }
+
+    const isPomodoro = change.mode === "pomodoro";
+    const message = isPomodoro ? copy.timer.pomodoroDone : copy.timer.countdownDone;
+
     setCompletion({
       at,
-      message: copy.timer.countdownDone,
-      notification: copy.notifications.countdownDone,
+      message,
+      notification: isPomodoro
+        ? copy.notifications.pomodoroDone
+        : copy.notifications.countdownDone,
     });
-    fireAlert(copy.timer.countdownDone);
-    reportCompleted("countdown");
+    fireAlert(message);
+    reportCompleted(change.mode);
     incrementDailySession();
-    setSession({ kind: "idle" });
+
+    sessionRef.current = next;
+    setSession(next);
+
+    // The finished run goes straight back to the clock; a single countdown
+    // lingers on its face for a beat so the number that just ran is readable.
+    if (isPomodoro) {
+      moveToFace("screen");
+      return;
+    }
 
     window.setTimeout(() => moveToFace("screen"), 2600);
   }, [
@@ -1691,16 +1670,13 @@ export default function Home() {
   }, [armAudioContext, closeMiniPlayer]);
 
   const resetAll = useCallback(() => {
-    setSession((current) => {
-      const abandoned = abandonmentOf(current, Date.now());
-      if (abandoned) trackEvent(abandoned);
-      return { kind: "idle" };
-    });
+    applySession({ type: "reset", now: Date.now() });
     setAlertUntil(0);
     setStopwatch({ running: false, startedAt: 0, accumulatedMs: 0 });
+    // Clearing first means this only poses the cube: there is no longer a
+    // session for the clock face to pause, so it cannot overwrite the message.
     activateFace("screen");
-    setLiveMessage(copy.timer.reset);
-  }, [activateFace]);
+  }, [activateFace, applySession]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -1733,6 +1709,21 @@ export default function Home() {
         return;
       }
 
+      // Up and down mirror the two arrows of the pad: pause, and the way back
+      // from it. Only left and right were bound, so a keyboard user could
+      // pause and then had nothing that returned to the session.
+      if (key === "arrowup") {
+        event.preventDefault();
+        activateFace("screen", "keyboard");
+        return;
+      }
+
+      if (key === "arrowdown") {
+        event.preventDefault();
+        activateFace(resumeTarget ?? "pomodoro", "keyboard");
+        return;
+      }
+
       if (key === "f") {
         event.preventDefault();
         void toggleFocusMode();
@@ -1744,7 +1735,7 @@ export default function Home() {
         resetAll();
       }
     },
-    [activateFace, resetAll, stepDial, toggleFocusMode],
+    [activateFace, resetAll, resumeTarget, stepDial, toggleFocusMode],
   );
 
   const updateAlarm = useCallback(
@@ -2159,7 +2150,15 @@ export default function Home() {
                 highlight={!hasSeenOnboarding}
                 onActivate={activateFace}
                 pomodoroWorkMinutes={workBlockMinutes}
-                topFaceId={session.kind === "pomodoro" ? "pomodoro" : topFaceId}
+                resumeFaceId={resumeTarget}
+                // A paused Pomodoro reports the pose it is resting on, not
+                // itself: claiming "pomodoro" is current disabled the very
+                // arrow that resumes it.
+                topFaceId={
+                  session.kind === "pomodoro" && !session.paused
+                    ? "pomodoro"
+                    : topFaceId
+                }
               />
             </div>
           </div>
@@ -2207,6 +2206,22 @@ export default function Home() {
           <div className="tk-card">
             <h2>{copy.panel.flipToFace}</h2>
             <div className="tk-faces">
+              {/* Only while frozen. The buttons below all START something, so
+                  the way back needs to be its own control rather than a face
+                  the user has to know doubles as a resume. */}
+              {isPaused ? (
+                <button
+                  aria-label={copy.aria.resume(resumeLabel)}
+                  className="tk-face-button tk-face-button--resume"
+                  onClick={resumeSession}
+                  type="button"
+                >
+                  <strong>{copy.panel.resumeName}</strong>
+                  <span>
+                    {resumeLabel} · {copy.panel.resumeHint}
+                  </span>
+                </button>
+              ) : null}
               {MODE_FACES.map((face) => (
                 <button
                   key={face.id}

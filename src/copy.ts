@@ -110,6 +110,8 @@ export const copy = {
       `x${multiplier} · ${workMinutes} min`,
     clockAction: "Pausa la cuenta",
     pauseAction: "Pausa",
+    resumeName: "Continuar",
+    resumeHint: "Vuelve a donde estabas",
     work: "Trabajo",
     break: "Descanso",
     // Lives on the cube face, under the countdown. A slash and not a colon:
@@ -160,6 +162,7 @@ export const copy = {
     deleteAlarm: (id: string) => `Eliminar alarma ${id}`,
     pomodoroBlock: (multiplier: number, workMinutes: number) =>
       `Bloque de trabajo x${multiplier}, ${workMinutes} minutos. El descanso sigue en 5 minutos.`,
+    resume: (label: string) => `Continuar la sesión en pausa: ${label}`,
   },
 
   notifications: {

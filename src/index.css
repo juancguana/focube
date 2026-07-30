@@ -312,6 +312,13 @@ input:focus-visible,
   cursor: default;
 }
 
+/* The arrow back to a paused session. Tinted so it stands out from the three
+   arrows around it, all of which discard that session and start something. */
+.tk-dpad__btn.is-resume {
+  border-color: rgba(45, 156, 219, 0.85);
+  background: rgba(28, 92, 134, 0.9);
+}
+
 .tk-dpad__arrow {
   display: flex;
   opacity: 0.75;
@@ -573,6 +580,19 @@ input:focus-visible,
 
 .tk-face-button--wide {
   grid-column: span 2;
+}
+
+/* Spans the full row and carries the accent: while a session is frozen this is
+   the one control that continues rather than restarts, so it has to read as
+   different from the faces below it. */
+.tk-face-button--resume {
+  grid-column: 1 / -1;
+  border-color: #2d9cdb;
+  background: #eaf6fd;
+}
+
+.tk-face-button--resume span {
+  opacity: 0.75;
 }
 
 .tk-face-button.is-active {
